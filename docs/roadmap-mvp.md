@@ -17,7 +17,7 @@ Le MVP existe pour **valider le noyau du jeu tel que le GDD le cadre**, rien de 
 
 ### Parti pris technique de démarrage (proposition, pas une décision du GDD)
 
-- **Application web TypeScript + Vite**, audio via **Web Audio API + Tone.js** (boucles/stems synchronisés, preview au survol, quantification sur le beat).
+- **Application web TypeScript + Vite**, audio via **Web Audio API + Tone.js** (boucles/stems synchronisés, preview au survol, quantification sur la mesure ou le beat — granularité à régler à l'oreille en playtest).
 - Jouable au navigateur **desktop et mobile tactile** ; packaging natif (ex. Capacitor) ou portage moteur envisagés **post-MVP** si nécessaire.
 - Justification : itération la plus rapide pour un gameplay audio-first, partageable en playtest par simple lien.
 - **Audio MVP** : chaque carte = 4 stems (un par slot, cf. GDD §3bis), boucles calées sur un **tempo global unique** (ex. 120 BPM) et une **tonalité commune** pour que tout se superpose proprement. Assets placeholder à produire. *(Proposition technique à valider — le GDD ne fixe ni tempo ni tonalité.)*
@@ -60,7 +60,7 @@ Le MVP existe pour **valider le noyau du jeu tel que le GDD le cadre**, rien de 
 - Plateau **4 slots fixes** (Rythme, Basse, Harmonie, Lead — GDD §2 ✅) ; poser une carte sur un slot occupé **remplace** la précédente (pas d'empilement — GDD §2 ✅).
 - Main, pioche, deck : main de départ (6 cartes — parti pris), pioche de complément à chaque nouvelle requête (2 cartes — parti pris).
 - **Séquence de requêtes d'un set** sur plateau persistant (GDD §11 ✅) : requête affichée → le joueur ajuste le plateau → **drop** → scoring → requête suivante. Remplacement **libre** entre requêtes (parti pris de démarrage).
-- **Scoring Proposition 1** (GDD §4) implémenté intégralement : +2 par paire de même Genre, +1 par paire d'Énergie identique, −2 par paire en contradiction de Genre non demandée par la recette, +5 par condition de recette remplie, +10 flat de « résolution audacieuse » si une contradiction demandée par la recette est effectivement posée. Mapping en 1–3 étoiles par paliers (ex. ≥80 % / ≥50 % / ≥25 % du score max théorique).
+- **Scoring Proposition 1** (GDD §4) implémenté intégralement : +2 par paire de même Genre, +1 par paire d'Énergie identique, −2 par paire en contradiction de Genre non demandée par la recette, +5 par condition de recette remplie, +10 flat de « résolution audacieuse » si une contradiction demandée par la recette est effectivement posée. Mapping en 1–3 étoiles par paliers (ex. ≥80 % / ≥50 % / ≥25 % du score max théorique). S'y ajoute le **bonus de contraste** de `data/scoring.json` (`contrast_pair_bonus` : +2 par paire Calme↔Intense — proposition hors Proposition 1 stricte, à valider en playtest, remettable à 0 ; cf. `docs/modele-de-donnees.md` §4).
 - **Décomposition du score affichée** : le GDD (§4) exige que le joueur comprenne *pourquoi* il a scoré → affichage détaillé façon « +12 synergie, +8 objectif » (pas de timing au MVP), ligne par ligne (quelle paire, quelle condition, quel bonus).
 - Aucune contrainte de pose bloquante : toute carte est posable sur tout slot, une mauvaise combinaison coûte des points mais ne bloque jamais (principe « main de poker » — GDD §5, point tranché).
 
@@ -76,7 +76,7 @@ Le MVP existe pour **valider le noyau du jeu tel que le GDD le cadre**, rien de 
 
 **Contenu**
 - Production des **stems placeholder** : 12 cartes × 4 stems = **48 boucles**, toutes calées sur le même tempo global (ex. 120 BPM) et une tonalité commune (parti pris technique à valider). Le caractère de chaque stem suit les descriptions du tableau du GDD §9 (ex. « Loup Statique » en Basse = sub acide punchy, en Lead = vocal chop robotique — GDD §3bis ✅ : le son change selon le slot, les tags non).
-- Intégration Tone.js : lecture synchronisée des 4 slots, **mix en temps réel à la pose** (poser/remplacer une carte change le mix de façon audible — GDD §1, point 3), avec quantification sur le beat (parti pris technique de cette roadmap, cf. « Parti pris technique de démarrage » — pas une exigence du GDD).
+- Intégration Tone.js : lecture synchronisée des 4 slots, **mix en temps réel à la pose** (poser/remplacer une carte change le mix de façon audible — GDD §1, point 3), avec quantification sur la mesure ou le beat, granularité à régler à l'oreille en playtest (parti pris technique de cette roadmap, cf. « Parti pris technique de démarrage » — pas une exigence du GDD).
 - **Preview sonore courte au survol** (1–2 s) d'une carte en main — validé par le GDD §5 comme complément au visuel.
 - Gestion des cas mobiles : déblocage du contexte audio au premier geste, comportement tactile du « survol » (ex. appui long = preview — proposition à valider).
 
@@ -84,7 +84,7 @@ Le MVP existe pour **valider le noyau du jeu tel que le GDD le cadre**, rien de 
 - Les 48 stems placeholder versionnés (ou pipeline documenté pour les régénérer).
 - Le jeu de M1, désormais audible : chaque plateau produit un mix superposé propre, sans décalage rythmique.
 
-**Done quand…** n'importe quelle combinaison de 4 cartes sur les 4 slots joue un mix synchronisé et supportable à l'oreille (pas de désynchronisation, pas de clipping), la preview au survol fonctionne, et un remplacement de carte s'entend proprement au drop suivant du beat.
+**Done quand…** n'importe quelle combinaison de 4 cartes sur les 4 slots joue un mix synchronisé et supportable à l'oreille (pas de désynchronisation, pas de clipping), la preview au survol fonctionne, et un remplacement de carte s'entend proprement au prochain point de quantification (mesure ou beat).
 
 ---
 
@@ -144,6 +144,7 @@ Les points ci-dessous sont ceux listés comme **ouverts** en fin de GDD (« Poin
 | Point ouvert (GDD) | Parti pris de démarrage | Jalon où trancher | Méthode |
 |---|---|---|---|
 | **Choix entre les 3 propositions de scoring** (§4) | Proposition 1 (recommandation du GDD pour le premier test) | Après **M4** — décision post-playtest | Playtest M4 : si le retour « je ne comprends pas mon score » revient souvent, implémenter la Proposition 3 et **A/B test** P1 vs P3 (P2 en réserve), comme le suggère le GDD |
+| **Chiffrage du bonus de contraste** (incohérence interne du GDD : annoncé §3 ✅ et testé par la recette « Contraste assumé », mais chiffré par aucune des 3 propositions §4) | +2 par paire Calme↔Intense (`contrast_pair_bonus` dans `data/scoring.json`, remettable à 0 pour la Proposition 1 stricte) | Après **M4**, en même temps que le choix de la formule | Playtest M4 : vérifier que la recette « Contraste assumé » récompense bien ce qu'elle annonce, puis intégrer le terme à la formule retenue |
 | **Remplacement libre vs limité par requête** (§11) | Libre (le plus simple à coder, dixit le GDD) | Après **M4** | Playtest M4 : observer si le remplacement libre tue la tension stratégique ; si oui, prototyper la variante « max 2 slots » et comparer en **A/B** |
 | **Nombre de requêtes par set** (5 ? 8 ?) | 6 par set (le GDD dit 5–8) ; M4 joue les 8 recettes pour tester toute la courbe | Après **M4** | Playtest M4 : mesurer la durée réelle d'un set vs la cible 2–5 min/round du GDD §1 et le point de lassitude des testeurs |
 | **Taille de la main / du deck de départ** | Main de 6, pioche de 2 par requête, deck = les 12 cartes du GDD | Après **M4** (premiers signaux dès **M1** en test interne) | Playtest : la main permet-elle toujours au moins un choix intéressant sans paralysie ? Ajuster par itération |

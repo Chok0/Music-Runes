@@ -72,7 +72,7 @@ La table de la section 9 liste les interprétations par slot dans l'ordre des sl
 
 ### Partis pris audio (à valider, hors GDD)
 
-Proposition MVP : toutes les boucles sont produites sur **un tempo global unique** (ex. 120 BPM) et **une tonalité commune**, pour que n'importe quelle combinaison de 4 stems se superpose proprement (lecture synchronisée via Web Audio API / Tone.js). Conséquence : l'axe « respect du tempo/tonalité globale » du score de cohérence (GDD section 4, axe 1) est satisfait par construction dans le MVP et n'a pas besoin d'être paramétré dans `scoring.json`. Format `.ogg` proposé par défaut (léger, bien supporté web) — **parti pris de démarrage, à valider**.
+Proposition MVP : toutes les boucles sont produites sur **un tempo global unique** (ex. 120 BPM) et **une tonalité commune**, pour que n'importe quelle combinaison de 4 stems se superpose proprement (lecture synchronisée via Web Audio API / Tone.js). Conséquence : l'axe « respect du tempo/tonalité globale » du score de cohérence (GDD section 4, axe 1) est satisfait par construction dans le MVP et n'a pas besoin d'être paramétré dans `scoring.json`. Côté formats, l'[architecture technique](architecture-technique.md) (section 4.2) recommande un **double encodage** `.ogg` (Vorbis, Chrome/Firefox/Android) + `.m4a` (AAC, Safari/iOS) avec détection du support au chargement : `cards.json` stocke le **chemin canonique en `.ogg`**, et le loader substitue l'extension `.m4a` si le navigateur ne lit pas Vorbis — **parti pris de démarrage, à valider**.
 
 ---
 
