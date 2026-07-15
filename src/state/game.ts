@@ -50,7 +50,6 @@ export function createGame(opts: CreateGameOptions): GameStore {
 
   /** Deck complet du joueur : base du max théorique (modele-de-donnees §4). */
   const fullDeckIds: readonly string[] = data.cards.map((c) => c.id);
-  const fullDeck: readonly Card[] = fullDeckIds.map(getCard);
 
   // --- État interne -------------------------------------------------------
   let phase: GamePhase = 'title';
@@ -67,7 +66,9 @@ export function createGame(opts: CreateGameOptions): GameStore {
 
   // --- Helpers ------------------------------------------------------------
 
-  /** Instantané immuable : jamais de référence mutable vers l'état interne. */
+  /** Instantané immuable : jamais de référence mutable vers l'état interne
+   * (breakdown compris — un consommateur qui trie/mute pairs ne doit pas
+   * corrompre les résultats internes). */
   function snapshot(): GameState {
     return {
       phase,
@@ -75,7 +76,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
       hand: [...hand],
       board: { ...board },
       requestIndex,
-      results: results.map((r) => ({ ...r })),
+      results: structuredClone(results),
       setScore,
     };
   }
@@ -97,7 +98,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
   function theoreticalMaxFor(recipe: Recipe): number {
     const cached = theoMaxCache.get(recipe.id);
     if (cached !== undefined) return cached;
-    const value = rules.theoreticalMax([...fullDeck], recipe, data.scoring);
+    const value = rules.theoreticalMax([...data.cards], recipe, data.scoring);
     theoMaxCache.set(recipe.id, value);
     return value;
   }
@@ -177,8 +178,8 @@ export function createGame(opts: CreateGameOptions): GameStore {
       setScore += breakdown.total;
       phase = 'scored';
       notify();
-      // Copie : le résultat interne ne doit pas être mutable de l'extérieur.
-      return { ...result };
+      // Copie profonde : le résultat interne ne doit pas être mutable de l'extérieur.
+      return structuredClone(result);
     },
 
     nextRequest() {

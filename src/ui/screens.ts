@@ -1,7 +1,7 @@
 /** Écrans hors plateau : titre, score de requête (modal), fin de set. */
 import type { GameData, RequestResult } from '../types';
 import { button, el } from './dom';
-import { formatPoints, starsText } from './format';
+import { starsText } from './format';
 import { renderBreakdownLines } from './score-panel';
 
 export type AudioStatus = 'idle' | 'loading' | 'ready' | 'failed';
@@ -52,16 +52,8 @@ export function renderScoredModal(
     el('div', 'modal__score', `score ${result.breakdown.total} / max théorique ${result.theoreticalMax}`),
   );
 
-  const summary = el('ul', 'modal__summary');
-  summary.appendChild(el('li', 'modal__summary-item', `${formatPoints(result.breakdown.coherence)} cohérence`));
-  summary.appendChild(el('li', 'modal__summary-item', `${formatPoints(result.breakdown.objective)} objectif`));
-  if (result.breakdown.audaciousApplied) {
-    summary.appendChild(
-      el('li', 'modal__summary-item modal__summary-item--dare', `${formatPoints(result.breakdown.audacious)} résolution audacieuse`),
-    );
-  }
-  modal.appendChild(summary);
-
+  // La décomposition (paires, conditions, totaux) est rendue par
+  // renderBreakdownLines, partagée avec le panneau « Score en direct ».
   modal.appendChild(renderBreakdownLines(result.breakdown, data));
   modal.appendChild(el('p', 'modal__note', 'Le mix continue de tourner pendant que tu lis ton score.'));
 

@@ -52,7 +52,7 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 
 ## État du projet
 
-**Phase de démarrage.** Le Game Design Document est rédigé et fait office d'unique source de vérité ; le prototype reste entièrement à construire. Prochaine étape : un MVP jouable pour valider la boucle solo (12 cartes, 8 recettes, scoring de base).
+**Prototype MVP jouable.** Le Game Design Document fait office d'unique source de vérité ; le prototype web couvre les jalons M0 à M4 de la [roadmap](docs/roadmap-mvp.md) : boucle complète du set (plateau persistant, remplacement libre), scoring Proposition 1 décomposé ligne à ligne, feedback de synergie/tension avant la pose, mix audible en temps réel (stems placeholder générés) et les 8 recettes en séquence. Prochaine étape : playtests et rééquilibrage des « petits chiffres » de `data/scoring.json`.
 
 ---
 
@@ -72,7 +72,16 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 
 ## Démarrer
 
-Le point d'entrée pour contribuer est le **jalon M0** de la [roadmap MVP](docs/roadmap-mvp.md).
+```bash
+npm install
+npm run dev     # génère les stems placeholder puis sert le jeu sur http://localhost:5173
+npm test        # tests unitaires (règles de scoring, machine à états)
+npm run build   # typecheck strict + bundle de production dans dist/
+```
+
+Par défaut un set enchaîne 6 requêtes ; ajoute `?set=8` à l'URL pour jouer les 8 recettes du GDD. Les stems placeholder (48 boucles WAV synthétisées, La mineur, tempo de `data/audio.json`) sont régénérables avec `npm run stems`.
+
+Pour comprendre le code avant de contribuer : la [roadmap MVP](docs/roadmap-mvp.md) et l'[architecture technique](docs/architecture-technique.md).
 
 Stack pressentie (parti pris de démarrage, à valider — ce n'est pas une décision du GDD) : **application web TypeScript + Vite, audio via Web Audio API / Tone.js**, jouable au navigateur desktop et mobile tactile — un packaging mobile natif (ex. Capacitor) reste une option post-MVP si le prototype web valide le concept. Détail et justification dans [`docs/architecture-technique.md`](docs/architecture-technique.md).
 

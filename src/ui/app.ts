@@ -16,7 +16,7 @@ import {
   type ScoreBreakdown,
   type SlotId,
 } from '../types';
-import { AUDIO_CONFIG, GAME_CONFIG, requestsPerSetFromUrl } from '../config';
+import { AUDIO_CONFIG, GAME_CONFIG, UI_FEEDBACK, requestsPerSetFromUrl } from '../config';
 import { loadGameData } from '../data/load';
 import { createRules } from '../rules';
 import { createGame } from '../state/game';
@@ -31,8 +31,6 @@ import { renderEndedScreen, renderScoredModal, renderTitleScreen, type AudioStat
 const DRAG_THRESHOLD_PX = 8;
 /** Délai avant preview sonore au survol (GDD §5 : aperçu, pas d'écoute forcée). */
 const PREVIEW_DELAY_MS = 300;
-/** Cohérence à partir de laquelle le plateau gagne son liseré harmonieux. */
-const HARMONY_THRESHOLD = 6;
 
 type CardOrigin = { kind: 'hand' } | { kind: 'board'; slot: SlotId };
 
@@ -53,23 +51,20 @@ export function mountApp(root: HTMLElement): void {
   const data = loadGameData();
   const rules = createRules();
   const config = { ...GAME_CONFIG, requestsPerSet: requestsPerSetFromUrl(data.recipes.length) };
-  /** Longueur réelle de la séquence (le store tronque aux recettes dispo). */
-  const totalRequests = Math.min(config.requestsPerSet, data.recipes.length);
+  // Déjà borné aux recettes disponibles par requestsPerSetFromUrl (clamp unique).
+  const totalRequests = config.requestsPerSet;
   const store = createGame({ data, rules, config });
   const audio = createAudioEngine(data, AUDIO_CONFIG);
 
   // --- État purement UI (hors store) --------------------------------------
   const ui = {
     audioStatus: 'idle' as AudioStatus,
-    starting: false,
     muted: false,
     selectedCardId: null as string | null,
     panelOpen: window.matchMedia('(min-width: 900px)').matches,
   };
   let drag: DragState | null = null;
   let handPreviewTimer: number | null = null;
-  let prevBoard: Record<SlotId, string | null> = { rythme: null, basse: null, harmonie: null, lead: null };
-  let audioDisposed = false;
 
   // --- Helpers données/règles ----------------------------------------------
   function cardOf(id: string): Card | null {
@@ -95,31 +90,27 @@ export function mountApp(root: HTMLElement): void {
 
   /**
    * Delta de score si `card` était posée sur `slot` (feedback avant la pose).
-   * Les tags ne dépendant pas du slot, seul le remplacement change le delta.
+   * Reproduit la sémantique exacte de store.place() : depuis la main, la
+   * carte remplace l'occupant (qui retourne en main) ; depuis un autre slot,
+   * les deux cartes s'ÉCHANGENT — le multiset posé ne change pas (delta 0).
    */
   function hypotheticalDelta(state: GameState, recipe: Recipe, card: Card, slot: SlotId): number {
     const board: Record<SlotId, string | null> = { ...state.board };
-    for (const s of SLOT_IDS) if (board[s] === card.id) board[s] = null;
+    const sourceSlot = SLOT_IDS.find((s) => board[s] === card.id);
+    if (sourceSlot !== undefined) board[sourceSlot] = board[slot]; // échange slot↔slot
     board[slot] = card.id;
     const hyp = evaluatePlaced(board, recipe)?.total ?? 0;
     const cur = evaluatePlaced(state.board, recipe)?.total ?? 0;
     return hyp - cur;
   }
 
-  // --- Audio ↔ état : diff du plateau, jamais de redéclenchement inutile ---
+  // --- Audio ↔ état : le moteur dédoublonne lui-même (setSlot no-op si la
+  // cible est déjà la bonne, dispose idempotent) — pas de diff côté UI.
   function syncAudio(state: GameState): void {
-    if (ui.audioStatus === 'ready' && !audioDisposed) {
-      for (const slot of SLOT_IDS) {
-        const next = state.board[slot];
-        if (next !== prevBoard[slot]) audio.setSlot(slot, next);
-      }
-    }
-    prevBoard = { ...state.board };
-    if (state.phase === 'ended' && !audioDisposed) {
-      // Fin de set : coupure propre, le récap est silencieux.
-      if (ui.audioStatus === 'ready') audio.dispose();
-      audioDisposed = true;
-    }
+    if (ui.audioStatus !== 'ready') return;
+    for (const slot of SLOT_IDS) audio.setSlot(slot, state.board[slot]);
+    // Fin de set : coupure propre, le récap est silencieux.
+    if (state.phase === 'ended') audio.dispose();
   }
 
   function clearHandPreviewTimer(): void {
@@ -130,7 +121,7 @@ export function mountApp(root: HTMLElement): void {
   }
 
   function stopPreviewIfReady(): void {
-    if (ui.audioStatus === 'ready' && !audioDisposed) audio.stopPreview();
+    if (ui.audioStatus === 'ready') audio.stopPreview();
   }
 
   // --- Rendu ----------------------------------------------------------------
@@ -139,6 +130,10 @@ export function mountApp(root: HTMLElement): void {
   }
 
   function render(state: GameState): void {
+    // Un re-render détacherait la carte source d'un drag en cours (et ses
+    // listeners pointerup) : le drag resterait verrouillé à jamais. On
+    // l'annule proprement avant de reconstruire le DOM.
+    if (drag) cleanupDrag();
     // Un re-render invalide les éléments survolés : on annule la preview en attente.
     clearHandPreviewTimer();
     const focusKey =
@@ -190,8 +185,10 @@ export function mountApp(root: HTMLElement): void {
 
     screen.appendChild(renderFooter(state));
 
-    // Clic hors carte/slot : désélection.
-    screen.addEventListener('pointerdown', (e) => {
+    // Clic hors carte/slot : désélection. En 'click' (pas 'pointerdown') :
+    // un re-render synchrone dans le pointerdown détacherait le bouton
+    // pressé et avalerait son click (drop/mute/panneau exigeraient 2 clics).
+    screen.addEventListener('click', (e) => {
       const t = e.target instanceof Element ? e.target : null;
       if (ui.selectedCardId && t && !t.closest('.card') && !t.closest('.slot')) {
         ui.selectedCardId = null;
@@ -250,8 +247,9 @@ export function mountApp(root: HTMLElement): void {
     const coherence = breakdown?.coherence ?? 0;
     if (coherence < 0) {
       board.classList.add('board--dissonant');
-      board.style.setProperty('--shake-amp', `${Math.min(3, 0.75 * Math.abs(coherence)).toFixed(2)}px`);
-    } else if (coherence >= HARMONY_THRESHOLD) {
+      const amp = Math.min(UI_FEEDBACK.shakeMaxPx, UI_FEEDBACK.shakePxPerPoint * Math.abs(coherence));
+      board.style.setProperty('--shake-amp', `${amp.toFixed(2)}px`);
+    } else if (coherence >= UI_FEEDBACK.harmonyThreshold) {
       board.classList.add('board--harmonious');
     }
 
@@ -474,6 +472,9 @@ export function mountApp(root: HTMLElement): void {
       cleanupDrag();
       if (hoverSlot) {
         store.place(d.cardId, hoverSlot); // notifie → re-render
+        // Relâchée sur son propre slot : place() no-op sans notification —
+        // on efface quand même les halos/deltas du drag (sinon fantômes).
+        applyActiveFeedback(store.getState());
       } else if (overHand && d.from.kind === 'board') {
         store.removeFromSlot(d.from.slot); // notifie → re-render
       } else {
@@ -589,8 +590,7 @@ export function mountApp(root: HTMLElement): void {
 
   // --- Actions globales -------------------------------------------------------
   async function onStart(): Promise<void> {
-    if (ui.starting) return;
-    ui.starting = true;
+    if (ui.audioStatus !== 'idle') return; // démarrage déjà engagé
     ui.audioStatus = 'loading';
     rerender();
     try {
@@ -609,7 +609,7 @@ export function mountApp(root: HTMLElement): void {
 
   function onToggleMute(): void {
     ui.muted = !ui.muted;
-    if (ui.audioStatus === 'ready' && !audioDisposed) audio.setMuted(ui.muted);
+    if (ui.audioStatus === 'ready') audio.setMuted(ui.muted);
     rerender();
   }
 

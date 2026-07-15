@@ -3,8 +3,14 @@
  *
  * cards.json stocke un chemin canonique en `.ogg` ; le format réellement
  * présent sur disque dépend de l'environnement (`.m4a` pour Safari,
- * `.wav` pour les placeholders de scripts/generate-stems.mjs). On sonde
- * donc les extensions par fetch HEAD et on charge la première qui répond.
+ * `.wav` pour les placeholders de scripts/generate-stems.mjs).
+ *
+ * Stratégie : PAS de requêtes HEAD (certains hébergeurs statiques les
+ * refusent en 403/405) ni de sniff de content-type — on tente directement
+ * le chargement/décodage : une 404 (même déguisée en fallback HTML du
+ * serveur de dev) fait échouer le décodage, on passe à l'extension
+ * suivante. L'extension gagnante du premier stem est mémorisée et les 47
+ * autres se chargent EN PARALLÈLE avec elle (repli individuel si besoin).
  * Un stem introuvable n'est jamais fatal : la voie restera silencieuse.
  */
 import * as Tone from 'tone';
@@ -19,35 +25,25 @@ export function stemKey(cardId: string, slot: SlotId): string {
   return `${cardId}/${slot}`;
 }
 
-/** true si l'URL répond et n'est pas le fallback HTML du serveur de dev. */
-async function probe(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, { method: 'HEAD' });
-    const type = res.headers.get('content-type') ?? '';
-    return res.ok && !type.includes('text/html');
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Résout l'URL réelle d'un stem à partir du chemin canonique `.ogg`.
- * `cache.ext` mémorise la première extension qui marche : elle est essayée
- * en premier pour les stems suivants (un seul format par déploiement).
+ * Charge un stem en essayant les extensions candidates (celle du cache en
+ * premier). Met à jour `cache.ext` sur succès. null si tout échoue.
  */
-async function resolveStemUrl(
+async function loadStem(
   canonicalPath: string,
   cache: { ext: StemExtension | null },
-): Promise<string | null> {
+): Promise<Tone.ToneAudioBuffer | null> {
   const base = canonicalPath.replace(/\.[a-z0-9]+$/i, '');
   const candidates: StemExtension[] = cache.ext
     ? [cache.ext, ...STEM_EXTENSIONS.filter((e) => e !== cache.ext)]
     : [...STEM_EXTENSIONS];
   for (const ext of candidates) {
-    const url = `/${base}.${ext}`;
-    if (await probe(url)) {
+    try {
+      const buffer = await Tone.ToneAudioBuffer.fromUrl(`/${base}.${ext}`);
       cache.ext = ext;
-      return url;
+      return buffer;
+    } catch {
+      // Extension absente ou réponse indécodable : on essaie la suivante.
     }
   }
   return null;
@@ -55,33 +51,38 @@ async function resolveStemUrl(
 
 /**
  * Charge TOUS les buffers avant de résoudre (architecture §4.3 : aucun
- * décodage pendant le jeu). Cartes en séquence pour que le cache d'extension
- * profite aux suivantes ; les 4 slots d'une carte sont sondés en parallèle.
- * Retourne une Map clé `stemKey` → buffer ; les stems manquants sont
- * signalés en console et absents de la Map.
+ * décodage pendant le jeu). Le premier stem sert de sonde d'extension
+ * (séquentiel), tout le reste part en parallèle — le navigateur limite
+ * lui-même la concurrence des fetchs. Retourne une Map clé `stemKey` →
+ * buffer ; les stems manquants sont signalés en console et absents de la Map.
  */
 export async function loadAllStems(
   cards: readonly Card[],
 ): Promise<Map<string, Tone.ToneAudioBuffer>> {
   const buffers = new Map<string, Tone.ToneAudioBuffer>();
   const cache: { ext: StemExtension | null } = { ext: null };
+
+  const jobs: { key: string; path: string; label: string }[] = [];
   for (const card of cards) {
-    await Promise.all(
-      SLOT_IDS.map(async (slot) => {
-        const url = await resolveStemUrl(card.slots[slot].stem, cache);
-        if (url === null) {
-          console.warn(`Stem introuvable pour « ${card.name} » (${slot}) : voie silencieuse.`);
-          return;
-        }
-        try {
-          buffers.set(stemKey(card.id, slot), await Tone.ToneAudioBuffer.fromUrl(url));
-        } catch {
-          console.warn(
-            `Échec de décodage du stem ${url} (« ${card.name} », ${slot}) : voie silencieuse.`,
-          );
-        }
-      }),
-    );
+    for (const slot of SLOT_IDS) {
+      jobs.push({
+        key: stemKey(card.id, slot),
+        path: card.slots[slot].stem,
+        label: `« ${card.name} » (${slot})`,
+      });
+    }
   }
+  if (jobs.length === 0) return buffers;
+
+  const run = async (job: (typeof jobs)[number]): Promise<void> => {
+    const buffer = await loadStem(job.path, cache);
+    if (buffer) buffers.set(job.key, buffer);
+    else console.warn(`Stem introuvable pour ${job.label} : voie silencieuse.`);
+  };
+
+  // Sonde : le premier stem fixe l'extension du déploiement…
+  await run(jobs[0]!);
+  // …puis tout le reste en parallèle avec cette extension en tête.
+  await Promise.all(jobs.slice(1).map(run));
   return buffers;
 }

@@ -48,6 +48,28 @@ function validateCard(raw: unknown, index: number): Card {
   return c;
 }
 
+function validateFilter(raw: unknown, where: string): void {
+  const filter = raw as { genre?: unknown; energy?: unknown };
+  if (!filter || typeof filter !== 'object')
+    throw new DataError('recipes.json', `${where} : filter requis`);
+  if (filter.genre === undefined && filter.energy === undefined)
+    throw new DataError('recipes.json', `${where} : filter vide (au moins genre ou energy requis)`);
+  if (filter.genre !== undefined) {
+    if (!Array.isArray(filter.genre) || filter.genre.length === 0)
+      throw new DataError('recipes.json', `${where} : filter.genre doit être une liste non vide`);
+    for (const g of filter.genre)
+      if (!GENRES.includes(g))
+        throw new DataError('recipes.json', `${where} : genre inconnu « ${String(g)} » dans le filtre`);
+  }
+  if (filter.energy !== undefined) {
+    if (!Array.isArray(filter.energy) || filter.energy.length === 0)
+      throw new DataError('recipes.json', `${where} : filter.energy doit être une liste non vide`);
+    for (const e of filter.energy)
+      if (!ENERGIES.includes(e))
+        throw new DataError('recipes.json', `${where} : énergie inconnue « ${String(e)} » dans le filtre`);
+  }
+}
+
 function validateCondition(raw: unknown, recipeId: string, index: number): RecipeCondition {
   const cond = raw as RecipeCondition;
   const where = `recette « ${recipeId} », condition #${index + 1}`;
@@ -56,12 +78,10 @@ function validateCondition(raw: unknown, recipeId: string, index: number): Recip
     case 'min_count':
       if (!Number.isInteger(cond.count) || cond.count < 1)
         throw new DataError('recipes.json', `${where} : count entier ≥ 1 requis`);
-      if (!cond.filter || typeof cond.filter !== 'object')
-        throw new DataError('recipes.json', `${where} : filter requis`);
+      validateFilter(cond.filter, where);
       return cond;
     case 'none':
-      if (!cond.filter || typeof cond.filter !== 'object')
-        throw new DataError('recipes.json', `${where} : filter requis`);
+      validateFilter(cond.filter, where);
       return cond;
     case 'all_same_genre':
     case 'all_different_genres':
@@ -101,6 +121,13 @@ function validateScoring(raw: unknown): ScoringConfig {
   }
   if (!Array.isArray(s.star_thresholds) || s.star_thresholds.length === 0)
     throw new DataError('scoring.json', 'star_thresholds : liste non vide requise');
+  for (const t of s.star_thresholds) {
+    if (!t || !Number.isInteger(t.stars) || t.stars < 0 || typeof t.min_ratio_of_theoretical_max !== 'number')
+      throw new DataError(
+        'scoring.json',
+        `star_thresholds : entrée invalide « ${JSON.stringify(t)} » (stars entier ≥ 0 et min_ratio_of_theoretical_max nombre requis)`
+      );
+  }
   if (!s.genre_conflicts || !Array.isArray(s.genre_conflicts.pairs))
     throw new DataError('scoring.json', 'genre_conflicts.pairs : liste requise');
   for (const pair of s.genre_conflicts.pairs) {
@@ -115,10 +142,13 @@ export function loadGameData(): GameData {
   const rawCards = (cardsJson as { cards?: unknown[] }).cards;
   if (!Array.isArray(rawCards)) throw new DataError('cards.json', 'clé « cards » (liste) attendue');
   const cards = rawCards.map(validateCard);
+  if (cards.length < SLOT_IDS.length)
+    throw new DataError('cards.json', `au moins ${SLOT_IDS.length} cartes requises pour remplir le plateau (${cards.length} trouvées)`);
 
   const rawRecipes = (recipesJson as { recipes?: unknown[] }).recipes;
   if (!Array.isArray(rawRecipes)) throw new DataError('recipes.json', 'clé « recipes » (liste) attendue');
   const recipes = rawRecipes.map(validateRecipe);
+  if (recipes.length === 0) throw new DataError('recipes.json', 'au moins une recette requise');
 
   const scoring = validateScoring(scoringJson);
 

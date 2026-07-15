@@ -5,31 +5,25 @@
  */
 import './styles.css';
 import { mountApp } from './ui/app';
+import { el } from './ui/dom';
 
 function renderFatalError(root: HTMLElement, err: unknown): void {
   const isError = err instanceof Error;
-  const box = document.createElement('div');
-  box.className = 'fatal-error';
-
-  const title = document.createElement('h1');
-  title.className = 'fatal-error__title';
-  title.textContent = 'Impossible de démarrer le jeu';
-
-  const kind = document.createElement('p');
-  kind.className = 'fatal-error__kind';
-  kind.textContent =
-    isError && err.name === 'DataError' ? 'Erreur de chargement des données' : 'Erreur inattendue';
-
-  const message = document.createElement('pre');
-  message.className = 'fatal-error__message';
-  message.textContent = isError ? err.message : String(err);
-
-  const hint = document.createElement('p');
-  hint.className = 'fatal-error__hint';
-  hint.textContent =
-    'Vérifie les fichiers data/cards.json, data/recipes.json et data/scoring.json, puis recharge la page.';
-
-  box.append(title, kind, message, hint);
+  const box = el('div', 'fatal-error');
+  box.append(
+    el('h1', 'fatal-error__title', 'Impossible de démarrer le jeu'),
+    el(
+      'p',
+      'fatal-error__kind',
+      isError && err.name === 'DataError' ? 'Erreur de chargement des données' : 'Erreur inattendue',
+    ),
+    el('pre', 'fatal-error__message', isError ? err.message : String(err)),
+    el(
+      'p',
+      'fatal-error__hint',
+      'Vérifie les fichiers data/cards.json, data/recipes.json et data/scoring.json, puis recharge la page.',
+    ),
+  );
   root.replaceChildren(box);
 }
 

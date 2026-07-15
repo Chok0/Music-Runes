@@ -25,18 +25,21 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // ---------------------------------------------------------------------------
-// Constantes temporelles
+// Constantes temporelles — tempo et longueur de boucle viennent de
+// data/audio.json, la source UNIQUE partagée avec le moteur (src/config.ts) :
+// changer le BPM là-bas régénère des stems cohérents ici.
 // ---------------------------------------------------------------------------
-
-const SR = 44100;
-const BPM = 120;
-const BEAT = 60 / BPM; // 0.5 s
-const LOOP = 8 * BEAT; // 2 mesures en 4/4 = 4.000 s
-const N = SR * 4; // 176400 échantillons
-const STEP = BEAT / 4; // grille de doubles-croches (32 pas par boucle)
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT_DIR = join(ROOT, 'public', 'assets', 'stems');
+const AUDIO = JSON.parse(readFileSync(join(ROOT, 'data', 'audio.json'), 'utf8'));
+
+const SR = 44100;
+const BPM = AUDIO.bpm;
+const BEAT = 60 / BPM; // 0.5 s à 120 BPM
+const LOOP = AUDIO.loop_measures * 4 * BEAT; // en 4/4 (4.000 s par défaut)
+const N = Math.round(SR * LOOP); // échantillons par boucle
+const STEP = BEAT / 4; // grille de doubles-croches
 const SLOTS = ['rythme', 'basse', 'harmonie', 'lead'];
 
 // Modulation par Énergie : densité rythmique, brillance (filtres), saturation,

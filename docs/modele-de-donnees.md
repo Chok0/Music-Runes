@@ -4,13 +4,14 @@
 >
 > **Nom de travail** : « Music Runes » est un nom provisoire (le GDD dit « [Nom provisoire] »).
 
-Trois fichiers de données, tous en JSON strict (sans commentaires — les explications sont ici) :
+Quatre fichiers de données, tous en JSON strict (sans commentaires — les explications sont ici) :
 
 | Fichier | Contenu | Source GDD |
 |---|---|---|
 | [`data/cards.json`](../data/cards.json) | Les 12 cartes du set MVP | Section 9 (+ 3bis) |
 | [`data/recipes.json`](../data/recipes.json) | Les 8 recettes de test | Section 10 |
 | [`data/scoring.json`](../data/scoring.json) | Paramètres de la Proposition 1 de scoring | Section 4 |
+| [`data/audio.json`](../data/audio.json) | Tempo global et longueur de boucle (partis pris audio) | Aucune (proposition, cf. §2) |
 
 ---
 
@@ -72,7 +73,7 @@ La table de la section 9 liste les interprétations par slot dans l'ordre des sl
 
 ### Partis pris audio (à valider, hors GDD)
 
-Proposition MVP : toutes les boucles sont produites sur **un tempo global unique** (ex. 120 BPM) et **une tonalité commune**, pour que n'importe quelle combinaison de 4 stems se superpose proprement (lecture synchronisée via Web Audio API / Tone.js). Conséquence : l'axe « respect du tempo/tonalité globale » du score de cohérence (GDD section 4, axe 1) est satisfait par construction dans le MVP et n'a pas besoin d'être paramétré dans `scoring.json`. Côté formats, l'[architecture technique](architecture-technique.md) (section 4.2) recommande un **double encodage** `.ogg` (Vorbis, Chrome/Firefox/Android) + `.m4a` (AAC, Safari/iOS) avec détection du support au chargement : `cards.json` stocke le **chemin canonique en `.ogg`**, et le loader substitue l'extension `.m4a` si le navigateur ne lit pas Vorbis — **parti pris de démarrage, à valider**.
+Proposition MVP : toutes les boucles sont produites sur **un tempo global unique** (ex. 120 BPM) et **une tonalité commune**, pour que n'importe quelle combinaison de 4 stems se superpose proprement (lecture synchronisée via Web Audio API / Tone.js). Le tempo et la longueur de boucle sont paramétrés dans **`data/audio.json`**, source unique lue à la fois par le moteur audio (`src/config.ts`) et par le générateur de stems (`scripts/generate-stems.mjs`) — changer le BPM d'un seul côté ne peut pas désynchroniser l'autre. Conséquence : l'axe « respect du tempo/tonalité globale » du score de cohérence (GDD section 4, axe 1) est satisfait par construction dans le MVP et n'a pas besoin d'être paramétré dans `scoring.json`. Côté formats, l'[architecture technique](architecture-technique.md) (section 4.2) recommande un **double encodage** `.ogg` (Vorbis, Chrome/Firefox/Android) + `.m4a` (AAC, Safari/iOS) avec détection du support au chargement : `cards.json` stocke le **chemin canonique en `.ogg`**, et le loader substitue l'extension `.m4a` si le navigateur ne lit pas Vorbis — **parti pris de démarrage, à valider**.
 
 ---
 

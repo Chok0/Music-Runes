@@ -46,6 +46,15 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
   const applied = slotRecord<string | null>(null);
   /** Id d'évènement transport du changement programmé par slot (dernier gagne). */
   const pending = slotRecord<number | null>(null);
+  /** Cible du changement programmé (pour dédoublonner les setSlot répétés). */
+  const pendingTarget = slotRecord<string | null>(null);
+
+  // Préchargement lancé DÈS la construction (écran-titre) : fetch et
+  // decodeAudioData fonctionnent sur un contexte suspendu — seul Tone.start()
+  // exige le geste utilisateur. Le temps passé sur le titre est du
+  // chargement gratuit.
+  const buffersPromise = loadAllStems(data.cards);
+  buffersPromise.catch(() => undefined); // pas d'unhandledrejection si init() n'est jamais appelé
 
   let initPromise: Promise<void> | null = null;
   let previewPlayer: Tone.Player | null = null;
@@ -87,7 +96,7 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
     // (autoplay policy, architecture §4.4).
     await Tone.start();
     transport.bpm.value = opts.bpm;
-    buffers = await loadAllStems(data.cards);
+    buffers = await buffersPromise;
 
     // Longueur musicale théorique d'une boucle (4/4). Poser loopEnd dessus
     // verrouille la phase même si l'encodeur a ajouté du padding en queue
@@ -97,6 +106,14 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       for (const slot of SLOT_IDS) {
         const buffer = buffers.get(stemKey(card.id, slot));
         if (!buffer) continue;
+        if (Math.abs(buffer.duration - loopSeconds) > 0.005) {
+          // Trop court : la boucle dérivera (rien ne peut le compenser) ;
+          // trop long : le loopEnd tronque le padding (voulu). Dans les
+          // deux cas l'asset est hors spec — à signaler, pas à masquer.
+          console.warn(
+            `Stem ${stemKey(card.id, slot)} : durée ${buffer.duration.toFixed(3)} s ≠ boucle ${loopSeconds.toFixed(3)} s — risque de dérive de phase.`,
+          );
+        }
         // Si un setSlot a précédé init, la voie naît déjà ouverte.
         const gain = new Tone.Gain(applied[slot] === card.id ? VOICE_GAIN : 0).connect(master);
         const player = new Tone.Player(buffer);
@@ -133,23 +150,31 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
 
     setSlot(slot: SlotId, cardId: string | null): void {
       if (disposed) return;
+      // No-op si la cible effective (programmée ou appliquée) est déjà la
+      // bonne : un re-setSlot identique ne doit surtout pas reprogrammer le
+      // changement (il repousserait la bascule d'un point de quantification).
+      const effective = pending[slot] !== null ? pendingTarget[slot] : applied[slot];
+      if (effective === cardId) return;
+      if (cardId !== null && !data.cardById.has(cardId)) {
+        console.warn(`Carte inconnue « ${cardId} » : slot ${slot} inchangé.`);
+        return;
+      }
       // Dernier gagne : annule le changement déjà programmé pour ce slot.
       const prev = pending[slot];
       if (prev !== null) {
         transport.clear(prev);
         pending[slot] = null;
-      }
-      if (cardId !== null && !data.cardById.has(cardId)) {
-        console.warn(`Carte inconnue « ${cardId} » : slot ${slot} inchangé.`);
-        return;
+        pendingTarget[slot] = null;
       }
       if (transport.state !== 'started') {
         // Avant le démarrage du transport : application immédiate.
         applySwitch(slot, cardId, Tone.now());
         return;
       }
+      pendingTarget[slot] = cardId;
       pending[slot] = transport.scheduleOnce((time) => {
         pending[slot] = null;
+        pendingTarget[slot] = null;
         applySwitch(slot, cardId, time);
       }, nextQuantizedTicks());
     },
@@ -176,6 +201,7 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
     stopPreview,
 
     setMuted(muted: boolean): void {
+      if (disposed) return;
       // Mute global de la destination : l'état des slots (gains, pending)
       // est intact, le mix revient tel quel au unmute.
       Tone.getDestination().mute = muted;
