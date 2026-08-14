@@ -104,27 +104,32 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
     transport.bpm.value = opts.bpm;
     buffers = await buffersPromise;
 
-    // Longueur musicale théorique d'une boucle (4/4). Poser loopEnd dessus
-    // verrouille la phase même si l'encodeur a ajouté du padding en queue
-    // (architecture §4.2).
+    // Longueur musicale théorique d'une boucle de BASE (4/4). Un stem peut
+    // faire n'importe quel MULTIPLE ENTIER de cette base (ex. lead sur 4
+    // mesures quand le rythme en fait 2) : tous les players démarrant à 0,
+    // une boucle de k×base reste en phase avec les boucles de base. Poser
+    // loopEnd sur le multiple verrouille la phase même si l'encodeur a
+    // ajouté du padding en queue (architecture §4.2).
     const loopSeconds = (opts.loopMeasures * 4 * 60) / opts.bpm;
     for (const card of data.cards) {
       for (const slot of SLOT_IDS) {
         const buffer = buffers.get(stemKey(card.id, slot));
         if (!buffer) continue;
-        if (Math.abs(buffer.duration - loopSeconds) > 0.005) {
+        const multiple = Math.max(1, Math.round(buffer.duration / loopSeconds));
+        const target = multiple * loopSeconds;
+        if (Math.abs(buffer.duration - target) > 0.005) {
           // Trop court : la boucle dérivera (rien ne peut le compenser) ;
           // trop long : le loopEnd tronque le padding (voulu). Dans les
           // deux cas l'asset est hors spec — à signaler, pas à masquer.
           console.warn(
-            `Stem ${stemKey(card.id, slot)} : durée ${buffer.duration.toFixed(3)} s ≠ boucle ${loopSeconds.toFixed(3)} s — risque de dérive de phase.`,
+            `Stem ${stemKey(card.id, slot)} : durée ${buffer.duration.toFixed(3)} s ≠ multiple de la boucle (${target.toFixed(3)} s) — risque de dérive de phase.`,
           );
         }
         // Si un setSlot a précédé init, la voie naît déjà ouverte.
         const gain = new Tone.Gain(applied[slot] === card.id ? VOICE_GAIN : 0).connect(master);
         const player = new Tone.Player(buffer);
         player.loop = true;
-        if (buffer.duration >= loopSeconds) player.loopEnd = loopSeconds;
+        if (buffer.duration >= target) player.loopEnd = target;
         player.connect(gain);
         player.sync().start(0);
         voices.set(stemKey(card.id, slot), { player, gain });
