@@ -2,6 +2,34 @@
   "schema_version": 1,
   "recipes": [
     {
+      "id": "balances",
+      "name": "Balances",
+      "difficulty": "Tutoriel",
+      "flavor": "« Teste-moi ce kick et cette basse, on ouvre dans une heure. »",
+      "note": "Recette tutorielle (hors GDD §10) : jouée sur 2 slots pour enseigner la pose, cf. data/scenes.json.",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 1,
+          "filter": { "genre": ["Techno"] }
+        }
+      ]
+    },
+    {
+      "id": "premiere-nappe",
+      "name": "Première nappe",
+      "difficulty": "Tutoriel",
+      "flavor": "« Pas mal. Ajoute une couche, que ça ressemble à quelque chose. »",
+      "note": "Recette tutorielle (hors GDD §10) : jouée sur 3 slots, cf. data/scenes.json.",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 2,
+          "filter": { "genre": ["Techno"] }
+        }
+      ]
+    },
+    {
       "id": "ouverture-club",
       "name": "Ouverture club",
       "difficulty": "Facile",
@@ -117,6 +145,24 @@
       "conditions": [
         {
           "type": "all_different_genres"
+        }
+      ]
+    },
+    {
+      "id": "le-rappel",
+      "name": "Le Rappel",
+      "difficulty": "Contradictoire, tendre",
+      "flavor": "« Il est 6h du matin. On veut encore de la techno. Mais doucement. »",
+      "note": "Recette de clôture de tournée (hors GDD §10), même famille que « Techno Romantique » : de la techno sans intensité.",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 2,
+          "filter": { "genre": ["Techno"] }
+        },
+        {
+          "type": "none",
+          "filter": { "energy": ["Intense"] }
         }
       ]
     }

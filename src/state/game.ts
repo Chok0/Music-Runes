@@ -11,6 +11,7 @@ import {
   type GameState,
   type GameStore,
   type Recipe,
+  type RequestPlan,
   type RequestResult,
   type SlotId,
 } from '../types';
@@ -38,9 +39,10 @@ export function createGame(opts: CreateGameOptions): GameStore {
   const { data, rules, config } = opts;
   const shuffle = opts.shuffle ?? fisherYates;
 
-  /** Séquence du set (défaut : ordre du fichier, tronqué à requestsPerSet). */
-  const sequence: readonly Recipe[] =
-    opts.recipeSequence ?? data.recipes.slice(0, config.requestsPerSet);
+  /** Plan du set (défaut : toutes les recettes du fichier, 4 slots actifs). */
+  const plan: readonly RequestPlan[] =
+    opts.plan ?? data.recipes.map((recipe) => ({ recipe, slots: SLOT_IDS }));
+  if (plan.length === 0) throw new Error('Plan de set vide : au moins une requête requise.');
 
   function getCard(id: string): Card {
     const card = data.cardById.get(id);
@@ -48,8 +50,9 @@ export function createGame(opts: CreateGameOptions): GameStore {
     return card;
   }
 
-  /** Deck complet du joueur : base du max théorique (modele-de-donnees §4). */
-  const fullDeckIds: readonly string[] = data.cards.map((c) => c.id);
+  /** Deck du joueur pour ce set : base du max théorique (modele-de-donnees §4). */
+  const fullDeckIds: readonly string[] = opts.deckIds ?? data.cards.map((c) => c.id);
+  const deckCards: Card[] = fullDeckIds.map(getCard);
 
   // --- État interne -------------------------------------------------------
   let phase: GamePhase = 'title';
@@ -66,6 +69,10 @@ export function createGame(opts: CreateGameOptions): GameStore {
 
   // --- Helpers ------------------------------------------------------------
 
+  function activeSlots(): readonly SlotId[] {
+    return plan[requestIndex]?.slots ?? SLOT_IDS;
+  }
+
   /** Instantané immuable : jamais de référence mutable vers l'état interne
    * (breakdown compris — un consommateur qui trie/mute pairs ne doit pas
    * corrompre les résultats internes). */
@@ -76,6 +83,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
       hand: [...hand],
       board: { ...board },
       requestIndex,
+      activeSlots: [...activeSlots()],
       results: structuredClone(results),
       setScore,
     };
@@ -92,14 +100,16 @@ export function createGame(opts: CreateGameOptions): GameStore {
   }
 
   function canDrop(): boolean {
-    return phase === 'playing' && SLOT_IDS.every((s) => board[s] !== null);
+    return phase === 'playing' && activeSlots().every((s) => board[s] !== null);
   }
 
-  function theoreticalMaxFor(recipe: Recipe): number {
-    const cached = theoMaxCache.get(recipe.id);
+  /** Max théorique sur le DECK DU JOUEUR et la taille de plateau de la requête. */
+  function theoreticalMaxFor(recipe: Recipe, boardSize: number): number {
+    const key = `${recipe.id}:${boardSize}`;
+    const cached = theoMaxCache.get(key);
     if (cached !== undefined) return cached;
-    const value = rules.theoreticalMax([...data.cards], recipe, data.scoring);
-    theoMaxCache.set(recipe.id, value);
+    const value = rules.theoreticalMax([...deckCards], recipe, data.scoring, boardSize);
+    theoMaxCache.set(key, value);
     return value;
   }
 
@@ -125,6 +135,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
 
     place(cardId, slot) {
       if (phase !== 'playing') return;
+      if (!activeSlots().includes(slot)) return; // slot verrouillé (progressivité)
       if (board[slot] === cardId) return; // déjà sur ce slot
       const handIndex = hand.indexOf(cardId);
       const sourceSlot = SLOT_IDS.find((s) => board[s] === cardId);
@@ -157,21 +168,22 @@ export function createGame(opts: CreateGameOptions): GameStore {
     drop() {
       if (!canDrop()) {
         throw new Error(
-          'drop() impossible : il faut être en phase « playing » avec les 4 slots remplis.',
+          'drop() impossible : il faut être en phase « playing » avec tous les slots actifs remplis.',
         );
       }
-      const recipe = sequence[requestIndex];
-      if (!recipe) {
+      const step = plan[requestIndex];
+      if (!step) {
         throw new Error(`Aucune recette pour la requête #${requestIndex + 1} du set.`);
       }
-      const placed = SLOT_IDS.map((s) => {
+      const recipe = step.recipe;
+      const placed = activeSlots().map((s) => {
         const id = board[s];
-        // Invariant : canDrop() garantit les 4 slots remplis.
+        // Invariant : canDrop() garantit les slots actifs remplis.
         if (id === null) throw new Error(`État incohérent : slot « ${s} » vide au drop.`);
         return getCard(id);
       });
       const breakdown = rules.evaluateBoard(placed, recipe, data.scoring);
-      const theoreticalMax = theoreticalMaxFor(recipe);
+      const theoreticalMax = theoreticalMaxFor(recipe, placed.length);
       const stars = rules.starsFor(breakdown.total, theoreticalMax, data.scoring);
       const result: RequestResult = { recipeId: recipe.id, breakdown, stars, theoreticalMax };
       results.push(result);
@@ -184,10 +196,20 @@ export function createGame(opts: CreateGameOptions): GameStore {
 
     nextRequest() {
       if (phase !== 'scored') return;
-      if (requestIndex >= sequence.length - 1) {
+      if (requestIndex >= plan.length - 1) {
         phase = 'ended';
       } else {
         requestIndex += 1;
+        // Si un slot occupé se re-verrouillait (interdit par la validation des
+        // scènes, mais l'invariant est garanti ici) : la carte revient en main.
+        const active = activeSlots();
+        for (const slot of SLOT_IDS) {
+          const id = board[slot];
+          if (id !== null && !active.includes(slot)) {
+            board[slot] = null;
+            hand.push(id);
+          }
+        }
         draw(config.drawPerRequest);
         phase = 'playing'; // le plateau est conservé (persistant, GDD §11)
       }
@@ -196,7 +218,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
 
     currentRecipe() {
       if (phase === 'title' || phase === 'ended') return null;
-      return sequence[requestIndex] ?? null;
+      return plan[requestIndex]?.recipe ?? null;
     },
   };
 }

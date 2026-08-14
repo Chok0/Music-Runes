@@ -11,16 +11,23 @@ import {
   type GameConfig,
   type GameStore,
   type Recipe,
+  type RequestPlan,
   type RulesApi,
   type ScoreBreakdown,
 } from '../types';
 
 const data = loadGameData();
 
-const TEST_CONFIG: GameConfig = { requestsPerSet: 6, startingHandSize: 6, drawPerRequest: 2 };
+const TEST_CONFIG: GameConfig = { startingHandSize: 6, drawPerRequest: 2 };
+/** Séquence de référence des tests : les 6 premières recettes, 4 slots actifs. */
+const REQUESTS_PER_SET = 6;
 
 /** Shuffle identité : la pioche suit l'ordre de cards.json. */
 const identity = (ids: string[]): string[] => ids;
+
+function planOf(recipes: Recipe[], slots: readonly (typeof SLOT_IDS)[number][] = SLOT_IDS): RequestPlan[] {
+  return recipes.map((recipe) => ({ recipe, slots }));
+}
 
 /** Faux moteur de règles : 4 cartes posées → total 20, max théorique 40 → 2★. */
 function makeFakeRules(): { rules: RulesApi; theoreticalMaxCalls: string[] } {
@@ -37,8 +44,8 @@ function makeFakeRules(): { rules: RulesApi; theoreticalMaxCalls: string[] } {
       total: placed.length * 5,
     }),
     pairDetails: () => [],
-    theoreticalMax: (_deck, recipe) => {
-      theoreticalMaxCalls.push(recipe.id);
+    theoreticalMax: (_deck, recipe, _cfg, boardSize) => {
+      theoreticalMaxCalls.push(`${recipe.id}:${boardSize ?? 4}`);
       return 40;
     },
     starsFor: (total, max) => (max > 0 && total / max >= 0.5 ? 2 : 0),
@@ -49,10 +56,18 @@ function makeFakeRules(): { rules: RulesApi; theoreticalMaxCalls: string[] } {
 
 function newGame(
   config: GameConfig = TEST_CONFIG,
-  recipeSequence?: Recipe[],
+  plan: RequestPlan[] = planOf(data.recipes.slice(0, REQUESTS_PER_SET)),
+  deckIds?: readonly string[],
 ): { game: GameStore; theoreticalMaxCalls: string[] } {
   const { rules, theoreticalMaxCalls } = makeFakeRules();
-  const game = createGame({ data, rules, config, shuffle: identity, ...(recipeSequence ? { recipeSequence } : {}) });
+  const game = createGame({
+    data,
+    rules,
+    config,
+    plan,
+    shuffle: identity,
+    ...(deckIds ? { deckIds } : {}),
+  });
   return { game, theoreticalMaxCalls };
 }
 
@@ -227,22 +242,80 @@ describe('canDrop / drop', () => {
     expect(() => game.drop()).toThrow(Error); // phase title
     game.startSet();
     game.place(cardIdAt(0), 'rythme');
-    expect(() => game.drop()).toThrow(/4 slots/); // 1 carte seulement
+    expect(() => game.drop()).toThrow(/slots actifs/); // 1 carte seulement
     fillBoard(game);
     game.drop();
     expect(() => game.drop()).toThrow(Error); // phase scored
   });
 
-  it('le max théorique est mis en cache par recette (une seule énumération)', () => {
+  it('le max théorique est mis en cache par (recette, taille de plateau)', () => {
     const r0 = recipeAt(0);
-    const { game, theoreticalMaxCalls } = newGame(TEST_CONFIG, [r0, r0]);
+    const { game, theoreticalMaxCalls } = newGame(TEST_CONFIG, planOf([r0, r0]));
     game.startSet();
     fillBoard(game);
     game.drop();
     game.nextRequest();
     game.drop(); // même recette, plateau conservé
     expect(game.getState().results).toHaveLength(2);
-    expect(theoreticalMaxCalls).toEqual([r0.id]); // un seul calcul
+    expect(theoreticalMaxCalls).toEqual([`${r0.id}:4`]); // un seul calcul
+  });
+});
+
+describe('slots actifs (progressivité tutorielle) et deck restreint', () => {
+  it('place est un no-op sur un slot verrouillé', () => {
+    const { game } = newGame(TEST_CONFIG, [
+      { recipe: recipeAt(0), slots: ['rythme', 'basse'] },
+    ]);
+    game.startSet();
+    expect(game.getState().activeSlots).toEqual(['rythme', 'basse']);
+    game.place(cardIdAt(0), 'lead'); // verrouillé
+    expect(game.getState().board.lead).toBeNull();
+    game.place(cardIdAt(0), 'rythme'); // actif
+    expect(game.getState().board.rythme).toBe(cardIdAt(0));
+  });
+
+  it('canDrop/drop sur un plateau partiel : score et max théorique à la taille du plateau', () => {
+    const { game, theoreticalMaxCalls } = newGame(TEST_CONFIG, [
+      { recipe: recipeAt(0), slots: ['rythme', 'basse'] },
+    ]);
+    game.startSet();
+    game.place(cardIdAt(0), 'rythme');
+    expect(game.canDrop()).toBe(false);
+    game.place(cardIdAt(1), 'basse');
+    expect(game.canDrop()).toBe(true); // 2 slots actifs remplis suffisent
+    const result = game.drop();
+    expect(result.breakdown.total).toBe(10); // faux rules : 2 cartes × 5
+    expect(theoreticalMaxCalls).toEqual([`${recipeAt(0).id}:2`]);
+  });
+
+  it('les slots débloqués en cours de set conservent le plateau existant', () => {
+    const { game } = newGame(TEST_CONFIG, [
+      { recipe: recipeAt(0), slots: ['rythme', 'basse'] },
+      { recipe: recipeAt(1), slots: ['rythme', 'basse', 'harmonie'] },
+    ]);
+    game.startSet();
+    game.place(cardIdAt(0), 'rythme');
+    game.place(cardIdAt(1), 'basse');
+    game.drop();
+    game.nextRequest();
+    const s = game.getState();
+    expect(s.activeSlots).toEqual(['rythme', 'basse', 'harmonie']);
+    expect(s.board.rythme).toBe(cardIdAt(0)); // plateau persistant
+    game.place(cardIdAt(2), 'harmonie'); // le slot débloqué est jouable
+    expect(game.getState().board.harmonie).toBe(cardIdAt(2));
+  });
+
+  it('deckIds restreint la pioche au deck du joueur', () => {
+    const owned = data.cards.slice(0, 4).map((c) => c.id);
+    const { game } = newGame(
+      TEST_CONFIG,
+      [{ recipe: recipeAt(0), slots: [...SLOT_IDS] }],
+      owned,
+    );
+    game.startSet();
+    const s = game.getState();
+    expect(s.hand).toEqual(owned); // main = tout le deck (4 < startingHandSize)
+    expect(s.deck).toEqual([]);
   });
 });
 
@@ -259,7 +332,7 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
     expect(s.requestIndex).toBe(1);
     expect(s.board).toEqual(boardBefore); // plateau persistant (GDD §11)
     expect(s.hand).toHaveLength(4); // 6 − 4 posées + 2 piochées
-    expect(s.deck).toHaveLength(4);
+    expect(s.deck).toHaveLength(data.cards.length - 6 - 2);
     expect(game.currentRecipe()?.id).toBe(recipeAt(1).id);
   });
 
@@ -272,19 +345,20 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
   });
 
   it('deck épuisé : pioches partielles puis nulles, sans erreur', () => {
-    // Main de départ 11 → deck 1 : la première pioche est partielle (1), les suivantes nulles.
-    const config: GameConfig = { requestsPerSet: 3, startingHandSize: 11, drawPerRequest: 2 };
-    const { game } = newGame(config);
+    // Main de départ n−1 → deck 1 : la première pioche est partielle (1), les suivantes nulles.
+    const handSize = data.cards.length - 1;
+    const config: GameConfig = { startingHandSize: handSize, drawPerRequest: 2 };
+    const { game } = newGame(config, planOf(data.recipes.slice(0, 3)));
     game.startSet();
     expect(game.getState().deck).toHaveLength(1);
     fillBoard(game);
     game.drop();
     game.nextRequest();
-    expect(game.getState().hand).toHaveLength(8); // 11 − 4 + 1 (pioche partielle)
+    expect(game.getState().hand).toHaveLength(handSize - 4 + 1); // pioche partielle
     expect(game.getState().deck).toHaveLength(0);
     game.drop();
     game.nextRequest();
-    expect(game.getState().hand).toHaveLength(8); // pioche nulle, pas d'erreur
+    expect(game.getState().hand).toHaveLength(handSize - 4 + 1); // pioche nulle, pas d'erreur
     game.drop();
     game.nextRequest();
     expect(game.getState().phase).toBe('ended');
@@ -294,7 +368,7 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
     const { game } = newGame();
     game.startSet();
     fillBoard(game);
-    for (let i = 0; i < TEST_CONFIG.requestsPerSet; i++) {
+    for (let i = 0; i < REQUESTS_PER_SET; i++) {
       expect(game.currentRecipe()?.id).toBe(recipeAt(i).id);
       game.drop();
       game.nextRequest();
@@ -304,7 +378,7 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
     expect(game.currentRecipe()).toBeNull();
     expect(s.results).toHaveLength(6);
     expect(s.setScore).toBe(120); // 6 × 20
-    expect(s.deck).toHaveLength(0); // 6 − 3 pioches de 2
+    expect(s.deck).toHaveLength(0); // 8 au départ, 5 pioches de 2 l'épuisent
     // ended : tout est figé
     const before = game.getState();
     game.nextRequest();
@@ -344,7 +418,7 @@ describe('subscribe / getState', () => {
     });
     const fresh = game.getState();
     expect(fresh.hand).toHaveLength(6);
-    expect(fresh.deck).toHaveLength(6);
+    expect(fresh.deck).toHaveLength(data.cards.length - 6);
     expect(fresh.board.rythme).toBeNull();
     expect(fresh.results).toHaveLength(0);
   });

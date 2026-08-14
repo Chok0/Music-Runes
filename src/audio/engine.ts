@@ -24,6 +24,9 @@ const RAMP_SECONDS = 0.01;
 /** Preview : volume modéré (elle se superpose au mix) et fades courts. */
 const PREVIEW_VOLUME_DB = -8;
 const PREVIEW_FADE_SECONDS = 0.02;
+/** Ducking de l'écran de score : mix en retrait, rampe douce. */
+const DUCK_GAIN = 0.3;
+const DUCK_RAMP_SECONDS = 0.35;
 
 interface Voice {
   player: Tone.Player;
@@ -36,8 +39,10 @@ function slotRecord<T>(value: T): Record<SlotId, T> {
 
 export function createAudioEngine(data: GameData, opts: AudioEngineOptions): AudioEngine {
   const transport = Tone.getTransport();
+  /** Gain de ducking (écran de score) : après le limiteur, avant la sortie. */
+  const duck = new Tone.Gain(1).toDestination();
   /** Filet anti-clipping du master (cf. VOICE_GAIN). */
-  const master = new Tone.Limiter(-1).toDestination();
+  const master = new Tone.Limiter(-1).connect(duck);
 
   /** Voies du mix, clé stemKey(cardId, slot). Absente = stem manquant. */
   const voices = new Map<string, Voice>();
@@ -58,6 +63,7 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
 
   let initPromise: Promise<void> | null = null;
   let previewPlayer: Tone.Player | null = null;
+  let applauseBuffer: Tone.ToneAudioBuffer | null = null;
   let disposed = false;
 
   /** Rampe le gain d'une voie vers `target` à l'instant `time` (contexte audio). */
@@ -98,31 +104,46 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
     transport.bpm.value = opts.bpm;
     buffers = await buffersPromise;
 
-    // Longueur musicale théorique d'une boucle (4/4). Poser loopEnd dessus
-    // verrouille la phase même si l'encodeur a ajouté du padding en queue
-    // (architecture §4.2).
+    // Longueur musicale théorique d'une boucle de BASE (4/4). Un stem peut
+    // faire n'importe quel MULTIPLE ENTIER de cette base (ex. lead sur 4
+    // mesures quand le rythme en fait 2) : tous les players démarrant à 0,
+    // une boucle de k×base reste en phase avec les boucles de base. Poser
+    // loopEnd sur le multiple verrouille la phase même si l'encodeur a
+    // ajouté du padding en queue (architecture §4.2).
     const loopSeconds = (opts.loopMeasures * 4 * 60) / opts.bpm;
     for (const card of data.cards) {
       for (const slot of SLOT_IDS) {
         const buffer = buffers.get(stemKey(card.id, slot));
         if (!buffer) continue;
-        if (Math.abs(buffer.duration - loopSeconds) > 0.005) {
+        const multiple = Math.max(1, Math.round(buffer.duration / loopSeconds));
+        const target = multiple * loopSeconds;
+        if (Math.abs(buffer.duration - target) > 0.005) {
           // Trop court : la boucle dérivera (rien ne peut le compenser) ;
           // trop long : le loopEnd tronque le padding (voulu). Dans les
           // deux cas l'asset est hors spec — à signaler, pas à masquer.
           console.warn(
-            `Stem ${stemKey(card.id, slot)} : durée ${buffer.duration.toFixed(3)} s ≠ boucle ${loopSeconds.toFixed(3)} s — risque de dérive de phase.`,
+            `Stem ${stemKey(card.id, slot)} : durée ${buffer.duration.toFixed(3)} s ≠ multiple de la boucle (${target.toFixed(3)} s) — risque de dérive de phase.`,
           );
         }
         // Si un setSlot a précédé init, la voie naît déjà ouverte.
         const gain = new Tone.Gain(applied[slot] === card.id ? VOICE_GAIN : 0).connect(master);
         const player = new Tone.Player(buffer);
         player.loop = true;
-        if (buffer.duration >= loopSeconds) player.loopEnd = loopSeconds;
+        if (buffer.duration >= target) player.loopEnd = target;
         player.connect(gain);
         player.sync().start(0);
         voices.set(stemKey(card.id, slot), { player, gain });
       }
+    }
+
+    // SFX optionnel (placeholder généré par scripts/generate-stems.mjs) : son
+    // absence n'est jamais bloquante — les applaudissements seront muets.
+    try {
+      applauseBuffer = await Tone.ToneAudioBuffer.fromUrl(
+        `${import.meta.env.BASE_URL}assets/sfx/applause.wav`,
+      );
+    } catch {
+      applauseBuffer = null;
     }
   }
 
@@ -207,6 +228,41 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       Tone.getDestination().mute = muted;
     },
 
+    setDucked(ducked: boolean): void {
+      if (disposed) return;
+      const g = duck.gain;
+      const now = Tone.now();
+      g.cancelScheduledValues(now);
+      g.setRampPoint(now);
+      g.linearRampToValueAtTime(ducked ? DUCK_GAIN : 1, now + DUCK_RAMP_SECONDS);
+    },
+
+    clearAllSlots(): void {
+      if (disposed) return;
+      // Fin de scène : silence immédiat de toutes les voies (pas de
+      // quantification — la scène est finie), état des pending purgé.
+      const now = Tone.now();
+      for (const slot of SLOT_IDS) {
+        const id = pending[slot];
+        if (id !== null) transport.clear(id);
+        pending[slot] = null;
+        pendingTarget[slot] = null;
+        const current = applied[slot];
+        if (current !== null) rampVoice(current, slot, 0, now);
+        applied[slot] = null;
+      }
+    },
+
+    playApplause(): void {
+      if (disposed || !applauseBuffer) return;
+      // One-shot hors mix et hors ducking : les applaudissements doivent
+      // sonner plein volume même pendant l'écran de célébration.
+      const player = new Tone.Player(applauseBuffer).toDestination();
+      player.fadeOut = 0.4;
+      player.onstop = () => player.dispose();
+      player.start(Tone.now());
+    },
+
     dispose(): void {
       if (disposed) return;
       disposed = true;
@@ -225,7 +281,10 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       voices.clear();
       for (const buffer of buffers.values()) buffer.dispose();
       buffers.clear();
+      applauseBuffer?.dispose();
+      applauseBuffer = null;
       master.dispose();
+      duck.dispose();
       // Le transport est un singleton global : on l'arrête, on ne le dispose pas.
     },
   };

@@ -1,31 +1,47 @@
 /**
  * Orchestration de l'interface (architecture §3.4) : DOM + SVG + CSS purs.
  *
- * Rendu par re-render complet : render(state) reconstruit l'écran à chaque
- * notification du store (le plateau a peu d'éléments). Le feedback de drag /
- * sélection (halos, deltas) est un état purement UI, appliqué PAR-DESSUS le
- * rendu — un drag en cours ne déclenche aucun re-render, il n'est donc
- * jamais interrompu.
+ * Deux niveaux d'état :
+ * - la TOURNÉE (méta) : scène courante, collection, portefeuille — persistée
+ *   en localStorage (src/state/tour.ts), écrans titre/intro/célébration/
+ *   boutique/fin de tournée ;
+ * - le SET (une scène en cours de jeu) : un GameStore par scène, rendu par
+ *   re-render complet à chaque notification, feedback de drag appliqué
+ *   PAR-DESSUS le rendu (un drag en cours ne déclenche aucun re-render).
  */
 import {
   SLOT_IDS,
   SLOT_LABELS,
   type Card,
   type GameState,
+  type GameStore,
   type Recipe,
+  type RequestResult,
+  type Scene,
   type ScoreBreakdown,
   type SlotId,
+  type TourSave,
 } from '../types';
-import { AUDIO_CONFIG, GAME_CONFIG, UI_FEEDBACK, requestsPerSetFromUrl } from '../config';
+import { AUDIO_CONFIG, GAME_CONFIG, UI_FEEDBACK } from '../config';
 import { loadGameData } from '../data/load';
 import { createRules } from '../rules';
 import { createGame } from '../state/game';
+import { createTour } from '../state/tour';
 import { createAudioEngine } from '../audio/engine';
 import { button, el } from './dom';
 import { createCardElement } from './card-view';
 import { formatPoints } from './format';
 import { renderBreakdownLines } from './score-panel';
-import { renderEndedScreen, renderScoredModal, renderTitleScreen, type AudioStatus } from './screens';
+import {
+  renderCelebration,
+  renderSceneIntro,
+  renderScoredModal,
+  renderShop,
+  renderTitleScreen,
+  renderTourEnd,
+  type AudioStatus,
+  type TourStatus,
+} from './screens';
 
 /** En deçà, un pointerdown+up est un clic (sélection) ; au-delà, un drag. */
 const DRAG_THRESHOLD_PX = 8;
@@ -33,6 +49,9 @@ const DRAG_THRESHOLD_PX = 8;
 const PREVIEW_DELAY_MS = 300;
 
 type CardOrigin = { kind: 'hand' } | { kind: 'board'; slot: SlotId };
+
+/** Écrans hors set — quand aucun GameStore n'est actif. */
+type MetaPhase = 'title' | 'intro' | 'celebration' | 'shop' | 'tour-ended';
 
 interface DragState {
   cardId: string;
@@ -47,16 +66,33 @@ interface DragState {
   slotPreviewTimer: number | null;
 }
 
+/** Données figées au moment de la fin de scène, pour la célébration/boutique. */
+interface SceneOutcome {
+  scene: Scene;
+  results: RequestResult[];
+  setScore: number;
+  grantCard: Card | null;
+}
+
 export function mountApp(root: HTMLElement): void {
   const data = loadGameData();
   const rules = createRules();
-  const config = { ...GAME_CONFIG, requestsPerSet: requestsPerSetFromUrl(data.recipes.length) };
-  // Déjà borné aux recettes disponibles par requestsPerSetFromUrl (clamp unique).
-  const totalRequests = config.requestsPerSet;
-  const store = createGame({ data, rules, config });
+  const tour = createTour(data);
   const audio = createAudioEngine(data, AUDIO_CONFIG);
 
-  // --- État purement UI (hors store) --------------------------------------
+  // --- État méta (tournée) --------------------------------------------------
+  let save: TourSave = tour.load() ?? tour.fresh();
+  let meta: MetaPhase = 'title';
+  /** Cartes offertes à l'entrée de la scène courante (affichage intro). */
+  let grantedCards: Card[] = [];
+  let outcome: SceneOutcome | null = null;
+
+  // --- État du set en cours -------------------------------------------------
+  let store: GameStore | null = null;
+  let unsubscribe: (() => void) | null = null;
+  let totalRequests = 0;
+
+  // --- État purement UI (hors stores) ---------------------------------------
   const ui = {
     audioStatus: 'idle' as AudioStatus,
     muted: false,
@@ -71,10 +107,16 @@ export function mountApp(root: HTMLElement): void {
     return data.cardById.get(id) ?? null;
   }
 
-  function placedCards(board: Record<SlotId, string | null>): Card[] {
+  function currentScene(): Scene {
+    const scene = data.scenes[save.sceneIndex];
+    if (!scene) throw new Error(`État incohérent : scène #${save.sceneIndex + 1} introuvable.`);
+    return scene;
+  }
+
+  function placedCards(state: GameState): Card[] {
     const cards: Card[] = [];
-    for (const slot of SLOT_IDS) {
-      const id = board[slot];
+    for (const slot of state.activeSlots) {
+      const id = state.board[slot];
       if (!id) continue;
       const card = cardOf(id);
       if (card) cards.push(card);
@@ -83,8 +125,8 @@ export function mountApp(root: HTMLElement): void {
   }
 
   /** evaluateBoard exige ≥ 1 carte : plateau vide → null (score courant 0). */
-  function evaluatePlaced(board: Record<SlotId, string | null>, recipe: Recipe): ScoreBreakdown | null {
-    const cards = placedCards(board);
+  function evaluatePlaced(state: GameState, recipe: Recipe): ScoreBreakdown | null {
+    const cards = placedCards(state);
     return cards.length > 0 ? rules.evaluateBoard(cards, recipe, data.scoring) : null;
   }
 
@@ -99,18 +141,20 @@ export function mountApp(root: HTMLElement): void {
     const sourceSlot = SLOT_IDS.find((s) => board[s] === card.id);
     if (sourceSlot !== undefined) board[sourceSlot] = board[slot]; // échange slot↔slot
     board[slot] = card.id;
-    const hyp = evaluatePlaced(board, recipe)?.total ?? 0;
-    const cur = evaluatePlaced(state.board, recipe)?.total ?? 0;
+    const hypState: GameState = { ...state, board };
+    const hyp = evaluatePlaced(hypState, recipe)?.total ?? 0;
+    const cur = evaluatePlaced(state, recipe)?.total ?? 0;
     return hyp - cur;
   }
 
   // --- Audio ↔ état : le moteur dédoublonne lui-même (setSlot no-op si la
-  // cible est déjà la bonne, dispose idempotent) — pas de diff côté UI.
+  // cible est déjà la bonne) — pas de diff côté UI.
   function syncAudio(state: GameState): void {
     if (ui.audioStatus !== 'ready') return;
     for (const slot of SLOT_IDS) audio.setSlot(slot, state.board[slot]);
-    // Fin de set : coupure propre, le récap est silencieux.
-    if (state.phase === 'ended') audio.dispose();
+    // Écran de score : le mix continue mais en retrait — ponctuation sonore
+    // de la fin de requête (retour playtest : la fin passait inaperçue).
+    audio.setDucked(state.phase === 'scored');
   }
 
   function clearHandPreviewTimer(): void {
@@ -124,9 +168,193 @@ export function mountApp(root: HTMLElement): void {
     if (ui.audioStatus === 'ready') audio.stopPreview();
   }
 
+  // --- Cycle de vie de la tournée -------------------------------------------
+
+  function tourStatus(): TourStatus {
+    if (save.sceneIndex >= data.scenes.length) return { kind: 'finished', totalScenes: data.scenes.length };
+    if (save.sceneIndex === 0 && save.ownedCardIds.length === 0)
+      return { kind: 'new', totalScenes: data.scenes.length };
+    return {
+      kind: 'in-progress',
+      sceneNumber: save.sceneIndex + 1,
+      totalScenes: data.scenes.length,
+      sceneName: currentScene().name,
+    };
+  }
+
+  function enterIntro(): void {
+    const scene = currentScene();
+    // Cartes offertes en début de scène (le deck de départ pour la scène 1) —
+    // idempotent : à la reprise d'une sauvegarde, rien de nouveau à montrer.
+    const granted = tour.applyStartGrants(save, scene);
+    tour.persist(save);
+    grantedCards = granted.map(cardOf).filter((c): c is Card => c !== null);
+    meta = 'intro';
+    renderMeta();
+  }
+
+  function startScene(): void {
+    const scene = currentScene();
+    const plan = scene.requests.map((req) => {
+      const recipe = data.recipeById.get(req.recipe);
+      if (!recipe) throw new Error(`Recette inconnue « ${req.recipe} » (scène ${scene.id}).`);
+      return { recipe, slots: req.slots };
+    });
+    totalRequests = plan.length;
+    store = createGame({
+      data,
+      rules,
+      config: GAME_CONFIG,
+      plan,
+      deckIds: [...save.ownedCardIds],
+    });
+    unsubscribe = store.subscribe(onStateChange);
+    store.startSet();
+  }
+
+  /** Fin de set : fige le résultat, crédite la tournée, célèbre. */
+  function handleSceneEnd(state: GameState): void {
+    const scene = currentScene();
+    unsubscribe?.();
+    unsubscribe = null;
+    store = null;
+
+    if (ui.audioStatus === 'ready') {
+      audio.setDucked(false);
+      audio.clearAllSlots();
+      audio.playApplause();
+    }
+
+    const grantCard = scene.grant_on_end !== undefined ? cardOf(scene.grant_on_end) : null;
+    outcome = { scene, results: state.results, setScore: state.setScore, grantCard };
+    tour.completeScene(save, scene, state.setScore);
+    tour.persist(save);
+    meta = 'celebration';
+    renderMeta();
+  }
+
+  function afterScene(): void {
+    outcome = null;
+    if (save.sceneIndex >= data.scenes.length) {
+      meta = 'tour-ended';
+      renderMeta();
+    } else {
+      enterIntro();
+    }
+  }
+
+  function onCelebrationContinue(): void {
+    if (!outcome) return afterScene();
+    const offers = tour.shopOffers(save, outcome.scene);
+    if (outcome.scene.shop && offers.length > 0) {
+      meta = 'shop';
+      renderMeta();
+    } else {
+      afterScene();
+    }
+  }
+
+  function onBuy(cardId: string): void {
+    if (!outcome?.scene.shop) return;
+    if (!tour.buy(save, cardId, outcome.scene.shop.price)) return;
+    tour.persist(save);
+    afterScene();
+  }
+
+  function onResetTour(): void {
+    tour.clear();
+    save = tour.fresh();
+    meta = 'title';
+    renderMeta();
+  }
+
+  async function onMountStage(): Promise<void> {
+    if (ui.audioStatus === 'loading') return;
+    if (ui.audioStatus === 'idle') {
+      ui.audioStatus = 'loading';
+      renderMeta();
+      try {
+        // init + start DANS le geste utilisateur (autoplay policy, archi §4.4).
+        await audio.init();
+        await audio.start();
+        ui.audioStatus = 'ready';
+        audio.setMuted(ui.muted);
+      } catch (err) {
+        // L'audio échoue ? Le jeu continue sans son, jamais bloqué.
+        console.warn('Audio indisponible — le jeu continue en silence.', err);
+        ui.audioStatus = 'failed';
+      }
+    }
+    startScene(); // notifie → écran de jeu
+  }
+
   // --- Rendu ----------------------------------------------------------------
+  function renderMeta(): void {
+    if (drag) cleanupDrag();
+    clearHandPreviewTimer();
+    root.replaceChildren();
+    switch (meta) {
+      case 'title':
+        root.appendChild(
+          renderTitleScreen(
+            tourStatus(),
+            () => {
+              if (save.sceneIndex >= data.scenes.length) onResetTour();
+              // Depuis le titre on passe toujours par l'intro de la scène courante.
+              if (save.sceneIndex < data.scenes.length) enterIntro();
+            },
+            tourStatus().kind === 'in-progress' ? onResetTour : null,
+          ),
+        );
+        break;
+      case 'intro':
+        root.appendChild(
+          renderSceneIntro({
+            scene: currentScene(),
+            sceneNumber: save.sceneIndex + 1,
+            totalScenes: data.scenes.length,
+            grantedCards,
+            audioStatus: ui.audioStatus,
+            onMountStage: () => void onMountStage(),
+          }),
+        );
+        break;
+      case 'celebration':
+        if (outcome) {
+          root.appendChild(
+            renderCelebration({
+              scene: outcome.scene,
+              results: outcome.results,
+              data,
+              setScore: outcome.setScore,
+              wallet: save.wallet,
+              grantCard: outcome.grantCard,
+              onContinue: onCelebrationContinue,
+            }),
+          );
+        }
+        break;
+      case 'shop':
+        if (outcome?.scene.shop) {
+          root.appendChild(
+            renderShop({
+              shop: outcome.scene.shop,
+              offers: tour.shopOffers(save, outcome.scene).map(cardOf).filter((c): c is Card => c !== null),
+              wallet: save.wallet,
+              onBuy,
+            }),
+          );
+        }
+        break;
+      case 'tour-ended':
+        root.appendChild(renderTourEnd({ data, save, onReplay: onResetTour }));
+        break;
+    }
+  }
+
   function rerender(): void {
-    render(store.getState());
+    if (store) render(store.getState());
+    else renderMeta();
   }
 
   function render(state: GameState): void {
@@ -142,7 +370,7 @@ export function mountApp(root: HTMLElement): void {
     root.replaceChildren();
     switch (state.phase) {
       case 'title':
-        root.appendChild(renderTitleScreen(ui.audioStatus, onStart));
+        // Le GameStore naît en 'title' : rien à montrer, startSet() suit immédiatement.
         break;
       case 'playing':
       case 'scored': {
@@ -151,13 +379,13 @@ export function mountApp(root: HTMLElement): void {
           const result = state.results[state.results.length - 1];
           if (result) {
             const isLast = state.requestIndex >= totalRequests - 1;
-            root.appendChild(renderScoredModal(result, data, isLast, () => store.nextRequest()));
+            root.appendChild(renderScoredModal(result, data, isLast, () => store?.nextRequest()));
           }
         }
         break;
       }
       case 'ended':
-        root.appendChild(renderEndedScreen(state.results, data, state.setScore, () => window.location.reload()));
+        // Géré par handleSceneEnd (transition méta) — jamais rendu ici.
         break;
     }
 
@@ -166,14 +394,18 @@ export function mountApp(root: HTMLElement): void {
   }
 
   function onStateChange(state: GameState): void {
+    if (state.phase === 'ended') {
+      handleSceneEnd(state);
+      return;
+    }
     syncAudio(state);
     render(state);
   }
 
   // --- Écran de jeu -----------------------------------------------------------
   function renderGameScreen(state: GameState): HTMLElement {
-    const recipe = store.currentRecipe();
-    const breakdown = recipe ? evaluatePlaced(state.board, recipe) : null;
+    const recipe = store?.currentRecipe() ?? null;
+    const breakdown = recipe ? evaluatePlaced(state, recipe) : null;
 
     const screen = el('div', 'screen screen--game');
     screen.appendChild(renderHud(state, recipe, breakdown));
@@ -200,9 +432,16 @@ export function mountApp(root: HTMLElement): void {
 
   function renderHud(state: GameState, recipe: Recipe | null, breakdown: ScoreBreakdown | null): HTMLElement {
     const hud = el('header', 'hud');
+    const scene = currentScene();
 
     const request = el('div', 'hud__request');
-    request.appendChild(el('div', 'hud__request-index', `Requête ${state.requestIndex + 1}/${totalRequests}`));
+    request.appendChild(
+      el(
+        'div',
+        'hud__request-index',
+        `${scene.name} · Requête ${state.requestIndex + 1}/${totalRequests}`,
+      ),
+    );
     if (recipe) {
       const nameRow = el('div', 'hud__recipe');
       nameRow.appendChild(el('span', 'hud__recipe-name', `« ${recipe.name} »`));
@@ -223,18 +462,18 @@ export function mountApp(root: HTMLElement): void {
     }
     hud.appendChild(request);
 
-    const meta = el('div', 'hud__meta');
-    meta.appendChild(el('div', 'hud__set-score', `Set : ${state.setScore} pts`));
+    const metaBox = el('div', 'hud__meta');
+    metaBox.appendChild(el('div', 'hud__set-score', `Set : ${state.setScore} pts`));
     const mute = button('hud__mute', ui.muted || ui.audioStatus === 'failed' ? '🔇' : '🔊', onToggleMute);
     mute.dataset['key'] = 'mute';
     mute.disabled = ui.audioStatus !== 'ready';
     mute.setAttribute('aria-pressed', String(ui.muted));
     mute.setAttribute('aria-label', ui.muted ? 'Rétablir le son' : 'Couper le son');
-    meta.appendChild(mute);
+    metaBox.appendChild(mute);
     if (ui.audioStatus === 'failed') {
-      meta.appendChild(el('div', 'hud__audio-warn', 'Audio indisponible — le jeu continue en silence.'));
+      metaBox.appendChild(el('div', 'hud__audio-warn', 'Audio indisponible — le jeu continue en silence.'));
     }
-    hud.appendChild(meta);
+    hud.appendChild(metaBox);
     return hud;
   }
 
@@ -260,6 +499,16 @@ export function mountApp(root: HTMLElement): void {
   function renderSlot(state: GameState, slot: SlotId): HTMLElement {
     const wrap = el('div', 'slot');
     wrap.dataset['slot'] = slot;
+
+    // Slot verrouillé (progressivité tutorielle) : visible mais inerte —
+    // le joueur voit ce qui l'attend sans pouvoir y poser de carte.
+    if (!state.activeSlots.includes(slot)) {
+      wrap.classList.add('slot--locked');
+      wrap.appendChild(el('div', 'slot__label', SLOT_LABELS[slot]));
+      wrap.appendChild(el('div', 'slot__placeholder', '🔒 Bientôt'));
+      return wrap;
+    }
+
     wrap.dataset['key'] = `slot-${slot}`;
     wrap.tabIndex = 0;
     wrap.appendChild(el('div', 'slot__label', SLOT_LABELS[slot]));
@@ -273,7 +522,7 @@ export function mountApp(root: HTMLElement): void {
       attachCardPointerHandlers(cardEl, card, { kind: 'board', slot });
       wrap.appendChild(cardEl);
 
-      const remove = button('slot__remove', '↩', () => store.removeFromSlot(slot));
+      const remove = button('slot__remove', '↩', () => store?.removeFromSlot(slot));
       remove.title = 'Renvoyer en main';
       remove.setAttribute('aria-label', `Renvoyer ${card.name} en main`);
       remove.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -317,15 +566,20 @@ export function mountApp(root: HTMLElement): void {
 
   function renderFooter(state: GameState): HTMLElement {
     const footer = el('footer', 'footer');
+    const activeCount = state.activeSlots.length;
 
     const dropRow = el('div', 'footer__drop-row');
-    const can = store.canDrop();
+    const can = store?.canDrop() ?? false;
     const drop = button('btn btn--primary footer__drop', '▶ Jouer le mix', onDrop);
     drop.dataset['key'] = 'drop';
     drop.disabled = !can;
-    if (!can) drop.title = 'Remplis les 4 slots';
+    if (!can) drop.title = `Remplis les ${activeCount} slots`;
     dropRow.appendChild(drop);
-    if (!can) dropRow.appendChild(el('span', 'footer__hint', 'Remplis les 4 slots pour jouer le mix.'));
+    if (!can) {
+      dropRow.appendChild(
+        el('span', 'footer__hint', `Remplis les ${activeCount} slot${activeCount > 1 ? 's' : ''} pour jouer le mix.`),
+      );
+    }
     footer.appendChild(dropRow);
 
     const hand = el('div', 'hand');
@@ -369,14 +623,14 @@ export function mountApp(root: HTMLElement): void {
     root.querySelectorAll('.slot__delta').forEach((n) => n.remove());
 
     if (state.phase !== 'playing') return;
-    const recipe = store.currentRecipe();
+    const recipe = store?.currentRecipe() ?? null;
     const activeId = drag?.started ? drag.cardId : ui.selectedCardId;
     if (!recipe || !activeId) return;
     const active = cardOf(activeId);
     if (!active) return;
 
     // Halo sur chaque carte déjà posée : la paire (carte active, carte posée).
-    for (const slot of SLOT_IDS) {
+    for (const slot of state.activeSlots) {
       const id = state.board[slot];
       if (!id || id === activeId) continue;
       const other = cardOf(id);
@@ -385,9 +639,14 @@ export function mountApp(root: HTMLElement): void {
       if (cls) root.querySelector(`.slot[data-slot="${slot}"] .card`)?.classList.add(cls);
     }
 
-    // Delta hypothétique : le slot survolé en drag, tous les slots en sélection.
-    const targets: SlotId[] = drag?.started ? (drag.hoverSlot ? [drag.hoverSlot] : []) : [...SLOT_IDS];
+    // Delta hypothétique : le slot survolé en drag, tous les slots ACTIFS en sélection.
+    const targets: SlotId[] = drag?.started
+      ? drag.hoverSlot
+        ? [drag.hoverSlot]
+        : []
+      : [...state.activeSlots];
     for (const slot of targets) {
+      if (!state.activeSlots.includes(slot)) continue;
       if (state.board[slot] === activeId) continue;
       const slotEl = root.querySelector<HTMLElement>(`.slot[data-slot="${slot}"]`);
       if (!slotEl) continue;
@@ -404,13 +663,13 @@ export function mountApp(root: HTMLElement): void {
 
   // --- Interactions : clic-pour-poser --------------------------------------
   function handleCardTap(card: Card, origin: CardOrigin): void {
-    const state = store.getState();
-    if (state.phase !== 'playing') return;
+    const state = store?.getState();
+    if (!state || state.phase !== 'playing') return;
     // Carte sélectionnée + tap sur une carte du plateau = remplacement.
     if (ui.selectedCardId && ui.selectedCardId !== card.id && origin.kind === 'board') {
       const selected = ui.selectedCardId;
       ui.selectedCardId = null;
-      store.place(selected, origin.slot); // notifie → re-render
+      store?.place(selected, origin.slot); // notifie → re-render
       return;
     }
     ui.selectedCardId = ui.selectedCardId === card.id ? null : card.id;
@@ -418,8 +677,8 @@ export function mountApp(root: HTMLElement): void {
   }
 
   function handleSlotTap(slot: SlotId): void {
-    const state = store.getState();
-    if (state.phase !== 'playing') return;
+    const state = store?.getState();
+    if (!state || state.phase !== 'playing') return;
     const selected = ui.selectedCardId;
     if (!selected) return;
     ui.selectedCardId = null;
@@ -427,7 +686,7 @@ export function mountApp(root: HTMLElement): void {
       rerender();
       return;
     }
-    store.place(selected, slot); // notifie → re-render
+    store?.place(selected, slot); // notifie → re-render
   }
 
   // --- Interactions : drag & drop Pointer Events ----------------------------
@@ -471,12 +730,12 @@ export function mountApp(root: HTMLElement): void {
       const overHand = d.overHand;
       cleanupDrag();
       if (hoverSlot) {
-        store.place(d.cardId, hoverSlot); // notifie → re-render
-        // Relâchée sur son propre slot : place() no-op sans notification —
-        // on efface quand même les halos/deltas du drag (sinon fantômes).
-        applyActiveFeedback(store.getState());
+        store?.place(d.cardId, hoverSlot); // notifie → re-render
+        // Relâchée sur son propre slot (ou un slot verrouillé) : place()
+        // no-op sans notification — on efface quand même les halos/deltas.
+        if (store) applyActiveFeedback(store.getState());
       } else if (overHand && d.from.kind === 'board') {
-        store.removeFromSlot(d.from.slot); // notifie → re-render
+        store?.removeFromSlot(d.from.slot); // notifie → re-render
       } else {
         rerender(); // pas de cible : la carte « revient » simplement
       }
@@ -509,7 +768,7 @@ export function mountApp(root: HTMLElement): void {
     drag.ghost = ghost;
     sourceEl.classList.add('card--drag-source');
     positionGhost(e);
-    applyActiveFeedback(store.getState());
+    if (store) applyActiveFeedback(store.getState());
   }
 
   function positionGhost(e: PointerEvent): void {
@@ -527,7 +786,8 @@ export function mountApp(root: HTMLElement): void {
     const hit = document.elementFromPoint(e.clientX, e.clientY);
     const slotEl = hit ? hit.closest<HTMLElement>('[data-slot]') : null;
     const rawSlot = slotEl?.dataset['slot'];
-    const slot = SLOT_IDS.find((s) => s === rawSlot) ?? null;
+    const activeSlots = store?.getState().activeSlots ?? [];
+    const slot = activeSlots.find((s) => s === rawSlot) ?? null; // les slots verrouillés ne sont pas des cibles
     const overHand = hit !== null && hit.closest('[data-hand-zone]') !== null;
 
     if (slot !== drag.hoverSlot) {
@@ -544,7 +804,7 @@ export function mountApp(root: HTMLElement): void {
       } else {
         stopPreviewIfReady();
       }
-      applyActiveFeedback(store.getState());
+      if (store) applyActiveFeedback(store.getState());
     }
 
     if (overHand !== drag.overHand) {
@@ -589,24 +849,6 @@ export function mountApp(root: HTMLElement): void {
   }
 
   // --- Actions globales -------------------------------------------------------
-  async function onStart(): Promise<void> {
-    if (ui.audioStatus !== 'idle') return; // démarrage déjà engagé
-    ui.audioStatus = 'loading';
-    rerender();
-    try {
-      // init + start DANS le geste utilisateur (autoplay policy, archi §4.4).
-      await audio.init();
-      await audio.start();
-      ui.audioStatus = 'ready';
-      audio.setMuted(ui.muted);
-    } catch (err) {
-      // L'audio échoue ? Le jeu continue sans son, jamais bloqué.
-      console.warn('Audio indisponible — le jeu continue en silence.', err);
-      ui.audioStatus = 'failed';
-    }
-    store.startSet(); // notifie → écran de jeu
-  }
-
   function onToggleMute(): void {
     ui.muted = !ui.muted;
     if (ui.audioStatus === 'ready') audio.setMuted(ui.muted);
@@ -614,12 +856,11 @@ export function mountApp(root: HTMLElement): void {
   }
 
   function onDrop(): void {
-    if (!store.canDrop()) return;
+    if (!store?.canDrop()) return;
     ui.selectedCardId = null;
     store.drop(); // notifie → modal de score (le mix continue de tourner)
   }
 
   // --- Démarrage ----------------------------------------------------------------
-  store.subscribe(onStateChange);
-  render(store.getState());
+  renderMeta();
 }

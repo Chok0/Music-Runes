@@ -183,8 +183,12 @@ Chaque carte est jouable sur n'importe quel des 4 slots ; ses tags Genre/Énergi
 | 10 | Poussière d'Étoile | Ambient | Neutre | Rythme organique épars | Sub doux évolutif | Nappes granulaires | Field recording traité |
 | 11 | Marteau Carré | Pop | Neutre | Beat pop classique | Bass groovy | Accords majeurs | Voix lead énergique |
 | 12 | Lame Cercle | Techno | Neutre | Beat techno standard | Sub carré | Arpège synthé | Lead acide |
+| 13 | Turbine Noire | Techno | Intense | Martèlement mécanique serré | Sub rotatif, pression constante | Nappe stroboscopique | Sifflement de machine lancée |
+| 14 | Sirène Carrée | Pop | Intense | Beat stade, claps larges | Synth-bass glissée, sirène | Accords néon saturés | Voix sirène, montée irrésistible |
 
 *(Rareté : toutes communes pour le MVP — la rareté et les combos narratifs écrits à la main viendront après validation du noyau système, cf. section 8.)*
+
+*(Cartes 13-14 ajoutées après le playtest #1 : le set initial de 12 rendait deux recettes de la section 10 mathématiquement insatisfiables — « Set monochrome » exige 4 cartes du même Genre alors qu'aucun genre n'en comptait plus de 3, et « Set stade » exige 2 cartes Pop Intense alors qu'il n'en existait qu'une. Turbine Noire porte le genre Techno à 4 cartes, Sirène Carrée double la Pop Intense.)*
 
 ---
 

@@ -7,7 +7,9 @@
  * mono 44100 Hz, dans public/assets/stems/<id>/<slot>.wav.
  *
  * Contraintes (docs/architecture-technique.md §4) :
- * - 2 mesures à 120 BPM en 4/4 = 4.000 s exactement (176400 échantillons) ;
+ * - 2 mesures à 120 BPM en 4/4 = 4.000 s exactement (176400 échantillons) —
+ *   sauf le lead, qui boucle sur 4 mesures (multiple entier de la base,
+ *   accepté par le moteur) pour une structure A/A' avec climax ;
  * - tonalité commune La mineur : tous les stems sont superposables ;
  * - bouclage propre : queues écrites circulairement (modulo la boucle) +
  *   micro-fades de ~3 ms aux bords ;
@@ -110,11 +112,31 @@ const OSC = {
 };
 
 /** Mixe `arr` dans `buf` à partir de t0, en écriture CIRCULAIRE (modulo la
- *  boucle) : les queues qui dépassent retombent au début → bouclage propre. */
+ *  longueur de `buf` — les stems n'ont pas tous la même : le lead boucle sur
+ *  4 mesures) : les queues qui dépassent retombent au début → bouclage propre. */
 function mixInto(buf, t0, arr, gain = 1) {
   const s0 = Math.round(t0 * SR);
-  const len = Math.min(arr.length, N);
-  for (let i = 0; i < len; i++) buf[(s0 + i) % N] += arr[i] * gain;
+  const len = Math.min(arr.length, buf.length);
+  for (let i = 0; i < len; i++) buf[(s0 + i) % buf.length] += arr[i] * gain;
+}
+
+/**
+ * Écho CIRCULAIRE (delay + feedback) : la queue de l'écho qui dépasse la fin
+ * de la boucle retombe au début, donc le stem reste bouclable sans couture.
+ * Trois passes de la récurrence suffisent à atteindre le régime permanent
+ * (feedback < 1 → convergence géométrique).
+ */
+function circularEcho(buf, delaySeconds, feedback, wet) {
+  const n = buf.length;
+  const d = (((Math.round(delaySeconds * SR)) % n) + n) % n || 1;
+  const dry = Float64Array.from(buf);
+  const echo = Float64Array.from(buf);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < n; i++) {
+      echo[i] = dry[i] + feedback * echo[(i - d + n) % n];
+    }
+  }
+  for (let i = 0; i < n; i++) buf[i] = dry[i] + wet * (echo[i] - dry[i]);
 }
 
 function onePoleLPInPlace(arr, cutoff) {
@@ -472,10 +494,12 @@ function harmonieTechno(buf, rng, E) {
       pad[i] += (OSC.saw(p1) + OSC.saw(p2)) * 0.125;
     }
   }
-  onePoleLPSweepInPlace(pad, (t) => 300 + 380 * E.bright * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.5 * t - Math.PI / 2)));
+  // Retour playtest : la version saturée (tanh × (2+drive)) était agressive —
+  // filtre plus sombre et drive réduit pour une nappe de fond, pas de premier plan.
+  onePoleLPSweepInPlace(pad, (t) => 240 + 260 * E.bright * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.5 * t - Math.PI / 2)));
   for (let i = 0; i < N; i++) {
     const t = i / SR;
-    pad[i] = Math.tanh(pad[i] * (2 + E.drive)) * (0.75 + 0.25 * Math.sin(Math.PI * t / LOOP) ** 2);
+    pad[i] = Math.tanh(pad[i] * (1.1 + 0.5 * E.drive)) * (0.75 + 0.25 * Math.sin(Math.PI * t / LOOP) ** 2);
   }
   mixInto(buf, 0, pad);
 }
@@ -489,7 +513,7 @@ function harmonieMetal(buf, rng, E) {
     const hit = chordHit(A5, {
       dur: muted ? 0.09 : 0.19, wave: 'saw', attack: 0.003, release: 0.04,
       gain: e % 4 === 0 ? 1 : 0.82, drive: 2.5 + 1.5 * E.drive,
-      cutoff: 900 + 1400 * E.bright, q: 0.8,
+      cutoff: 700 + 1100 * E.bright, q: 0.8,
     });
     mixInto(buf, e * 2 * STEP, hit);
   }
@@ -503,15 +527,17 @@ function harmoniePop(buf, rng, E) {
     [-12, -9, -5, -2], // Am7 (A3 C4 E4 G4)
     [-17, -12, -9],    // Am/E (E3 A3 C4)
   ];
+  // Retour playtest : les saws brillantes étaient criardes — triangle + partiels
+  // (plus proche d'un piano électrique), attaque adoucie, filtre plus bas.
   for (let h = 0; h < 4; h++) {
     const hit = chordHit(chords[h], {
-      dur: 0.6, wave: 'saw', attack: 0.005, release: 0.3, gain: 1,
-      strum: 0.009, cutoff: 900 + 1900 * E.bright, q: 0.9, detune: 0.004,
+      dur: 0.6, wave: 'tri', attack: 0.01, release: 0.3, gain: 1,
+      strum: 0.009, cutoff: 700 + 1100 * E.bright, q: 0.8, detune: 0.004, harmonics: [0.2],
     });
     mixInto(buf, h * BEAT * 2, hit); // un accord par blanche
     if (E.dens >= 1) {
       mixInto(buf, h * BEAT * 2 + BEAT * 1.5,
-        chordHit(chords[h], { dur: 0.1, wave: 'saw', attack: 0.004, release: 0.06, gain: 0.5, cutoff: 900 + 1900 * E.bright }));
+        chordHit(chords[h], { dur: 0.1, wave: 'tri', attack: 0.006, release: 0.06, gain: 0.5, cutoff: 700 + 1100 * E.bright, harmonics: [0.2] }));
     }
   }
 }
@@ -555,7 +581,25 @@ function harmonieAmbient(buf, rng, E) {
 
 // ---------------------------------------------------------------------------
 // Recettes de synthèse — LEAD (pentatonique de La mineur, motif seedé)
+//
+// Retour playtest #1 : « l'effet boucle manque de fun musical ». Les leads
+// bouclent donc sur 4 MESURES (2× la boucle de base — le moteur accepte tout
+// multiple entier) en structure A/A' : la seconde moitié varie le motif et se
+// termine par un CLIMAX (montée, filtre ouvert, note haute tenue). Un écho
+// circulaire par genre (LEAD_ECHO) donne l'espace qui manquait aux timbres.
 // ---------------------------------------------------------------------------
+
+/** Mesures de la boucle lead (multiple de la boucle de base). */
+const LEAD_LOOP_MULT = 2;
+
+/** Écho du lead par genre : delay en s (à 120 BPM : croche 0.25, pointée 0.375). */
+const LEAD_ECHO = {
+  Techno: { delay: 0.375, feedback: 0.4, wet: 0.35 }, // croche pointée dub
+  Pop: { delay: 0.375, feedback: 0.3, wet: 0.25 },
+  Jazz: { delay: 0.25, feedback: 0.25, wet: 0.15 }, // discret
+  Ambient: { delay: 0.5, feedback: 0.5, wet: 0.5 }, // nappe d'échos
+  Metal: { delay: 0.125, feedback: 0.25, wet: 0.15 }, // slapback serré
+};
 
 /** Les descriptions « voix/vocal/cri » basculent sur le timbre formants+AM. */
 function leadTimbre(description) {
@@ -566,40 +610,54 @@ function leadTimbre(description) {
 }
 
 function leadTechno(buf, rng, E, timbre) {
-  // arpège acide en doubles-croches (croches en Calme), cutoff balayé sur la boucle
+  // arpège acide en doubles-croches (croches en Calme) ; moitié A' relevée
+  // d'une octave par endroits, dernière mesure : montée + filtre grand ouvert
   const motif = Array.from({ length: 8 }, () => choose(rng, [0, 2, 3, 4, 5, 7]));
   motif[0] = 0; // ancre sur la tonique
   const div = E.dens < 0.7 ? 2 : 1;
-  for (let s = 0; s < 32; s += div) {
-    const deg = motif[(s / div) % 8] + (s >= 16 && rng() < 0.3 ? 5 : 0);
-    const accent = s % 4 === 0 ? 1 : 0.75;
-    let note;
-    if (timbre.voice) {
-      note = voiceTone({ freq: pentaHz(deg, 0), dur: 0.1 * div, robot: timbre.robot, gain: accent, attack: 0.004, release: 0.03 });
-    } else {
-      note = tone({ freq: pentaHz(deg, -12), dur: 0.09 * div, wave: 'square', attack: 0.002, release: 0.03, gain: accent });
-      const sweep = 0.5 + 0.5 * Math.sin((2 * Math.PI * s) / 32 - Math.PI / 2);
-      biquadLPInPlace(note, 400 + (400 + 2000 * E.bright) * sweep, 5);
-      applyDrive(note, 1 + E.drive);
+  for (let half = 0; half < 2; half++) {
+    const t0 = half * LOOP;
+    for (let s = 0; s < 32; s += div) {
+      const climax = half === 1 && s >= 24;
+      let deg = motif[(s / div) % 8] + (half === 1 && !climax && rng() < 0.3 ? 5 : 0);
+      if (climax) deg = 4 + Math.round(((s - 24) / 8) * 6); // montée vers l'aigu
+      const accent = climax ? 1.15 : s % 4 === 0 ? 1 : 0.75;
+      let note;
+      if (timbre.voice) {
+        note = voiceTone({ freq: pentaHz(deg, 0), dur: 0.1 * div, robot: timbre.robot, gain: accent, attack: 0.004, release: 0.03 });
+      } else {
+        note = tone({ freq: pentaHz(deg, -12), dur: 0.09 * div, wave: 'square', attack: 0.002, release: 0.03, gain: accent });
+        // Le filtre balaye les 64 pas de la boucle longue, ouvert en grand au climax.
+        const phase = (half * 32 + s) / 64;
+        const sweep = climax ? 1 : 0.5 + 0.5 * Math.sin(2 * Math.PI * phase - Math.PI / 2);
+        biquadLPInPlace(note, 400 + (400 + 2000 * E.bright) * sweep, 5);
+        applyDrive(note, 1 + E.drive);
+      }
+      mixInto(buf, t0 + s * STEP, note);
     }
-    mixInto(buf, s * STEP, note);
   }
 }
 
 function leadMetal(buf, rng, E, timbre) {
-  // riff agressif : motif d'une mesure en croches, répété avec variation de fin
+  // riff agressif sur 4 mesures ; la dernière : montée en doubles → cri tenu
   const motif = Array.from({ length: 8 }, (_, i) => (i % 4 === 3 && rng() < 0.35 ? null : choose(rng, [0, 1, 2, 3, 5])));
   motif[0] = 0;
-  for (let bar = 0; bar < 2; bar++) {
+  for (let bar = 0; bar < 4; bar++) {
+    const climaxBar = bar === 3;
     for (let e = 0; e < 8; e++) {
       let deg = motif[e];
+      if (climaxBar) {
+        deg = e < 6 ? choose(rng, [2, 3, 5, 7]) : e === 6 ? 7 : 9; // montée → sommet
+      } else if (bar === 1 && e >= 6) {
+        deg = choose(rng, [5, 7]); // fin de riff qui monte
+      }
       if (deg === null) continue;
-      if (bar === 1 && e >= 6) deg = choose(rng, [5, 7]); // fin de riff qui monte
-      const doubles = E.dens >= 1 && rng() < 0.4 ? 2 : 1;
+      const finalCry = climaxBar && e === 7;
+      const doubles = !finalCry && (climaxBar || (E.dens >= 1 && rng() < 0.4)) ? 2 : 1;
       for (let k = 0; k < doubles; k++) {
         const note = timbre.voice
-          ? voiceTone({ freq: pentaHz(deg, 0), dur: 0.13, robot: timbre.robot, gain: 1, attack: 0.006, drive: 2 + E.drive })
-          : tone({ freq: pentaHz(deg, -24), dur: 0.16 / doubles, wave: 'saw', attack: 0.002, release: 0.04, gain: 1, drive: 3 * E.drive, cutoff: 800 + 1700 * E.bright });
+          ? voiceTone({ freq: pentaHz(deg, 0), dur: finalCry ? 0.5 : 0.13, robot: timbre.robot, gain: finalCry ? 1.1 : 1, attack: 0.006, release: finalCry ? 0.25 : 0.12, drive: 2 + E.drive })
+          : tone({ freq: pentaHz(deg, -24), dur: finalCry ? 0.55 : 0.16 / doubles, wave: 'saw', attack: 0.002, release: finalCry ? 0.2 : 0.04, gain: finalCry ? 1.1 : 1, drive: 3 * E.drive, cutoff: 800 + 1700 * E.bright, vibHz: finalCry ? 5.5 : 0, vibDepth: finalCry ? 0.01 : 0 });
         mixInto(buf, bar * 2 + e * 2 * STEP + k * STEP, note);
       }
     }
@@ -607,32 +665,49 @@ function leadMetal(buf, rng, E, timbre) {
 }
 
 function leadPop(buf, rng, E, timbre) {
-  // hook en croches : motif répété 2x, cadence finale vers la tonique
+  // hook en croches : couplet A (2 mesures), A' varié, envolée finale à l'octave
   const motif = Array.from({ length: 8 }, () => (rng() < 0.2 ? null : choose(rng, [0, 2, 3, 4, 5, 7])));
   motif[0] = choose(rng, [4, 5]); // départ haut, accrocheur
-  for (let bar = 0; bar < 2; bar++) {
+  for (let bar = 0; bar < 4; bar++) {
+    const lastBar = bar === 3;
     for (let e = 0; e < 8; e++) {
       let deg = motif[e];
-      if (bar === 1 && e >= 6) deg = e === 6 ? 2 : 0;
+      if (bar === 1 && e >= 6) deg = e === 6 ? 2 : 0; // cadence du couplet
+      if (bar === 2 && deg !== null && rng() < 0.35) deg += 2; // variation A'
+      if (lastBar && e >= 5) deg = e === 5 ? 5 : e === 6 ? 7 : 9; // envolée finale
       if (deg === null) continue;
-      const dur = 0.18 + (e % 2) * 0.04;
+      const finalNote = lastBar && e === 7;
+      const dur = finalNote ? 0.6 : 0.18 + (e % 2) * 0.04;
+      const gain = finalNote ? 1.15 : e % 4 === 0 ? 1.1 : 0.9;
       const note = timbre.voice
-        ? voiceTone({ freq: pentaHz(deg, 0), dur, gain: e % 4 === 0 ? 1.1 : 0.9, attack: 0.015 })
-        : tone({ freq: pentaHz(deg, 0), dur, wave: 'tri', attack: 0.008, release: 0.08, gain: 1, cutoff: 1200 + 1800 * E.bright, vibHz: 5, vibDepth: 0.004 });
+        ? voiceTone({ freq: pentaHz(deg, 0), dur, gain, attack: 0.015, release: finalNote ? 0.3 : 0.12 })
+        : tone({ freq: pentaHz(deg, 0), dur, wave: 'tri', attack: 0.008, release: finalNote ? 0.25 : 0.08, gain, cutoff: 1200 + 1800 * E.bright, vibHz: 5, vibDepth: finalNote ? 0.008 : 0.004 });
       mixInto(buf, bar * 2 + e * 2 * STEP, note);
     }
   }
 }
 
 function leadJazz(buf, rng, E, timbre) {
-  // phrase swing « improvisée » : triolets, marche par degrés pentatoniques
+  // phrase swing « improvisée » sur 16 temps : triolets, marche par degrés ;
+  // temps 13-15 : run ascendant, temps 16 : résolution longue sur l'aigu
   let deg = choose(rng, [4, 5, 6]);
-  for (let b = 0; b < 8; b++) {
-    if (rng() < 0.25 * (1.6 - E.dens)) continue; // respirations
+  for (let b = 0; b < 16; b++) {
+    const climax = b >= 12 && b < 15;
+    const resolution = b === 15;
+    if (!climax && !resolution && rng() < 0.25 * (1.6 - E.dens)) continue; // respirations
+    if (resolution) {
+      const note = timbre.voice
+        ? voiceTone({ freq: pentaHz(7, -12), dur: 0.8, gain: 1, attack: 0.03, release: 0.35 })
+        : tone({ freq: pentaHz(7, -12), dur: 0.8, wave: 'tri', attack: 0.02, release: 0.3, gain: 1, cutoff: 900 + 1100 * E.bright, harmonics: [0.25], vibHz: 5.5, vibDepth: 0.007 });
+      mixInto(buf, b * BEAT, note);
+      continue;
+    }
     const r = rng();
-    const ks = r < 0.45 ? [0] : r < 0.8 ? [0, 2] : [0, 1, 2]; // positions ternaires
+    const ks = climax ? [0, 1, 2] : r < 0.45 ? [0] : r < 0.8 ? [0, 2] : [0, 1, 2]; // positions ternaires
     for (let j = 0; j < ks.length; j++) {
-      deg = Math.max(0, Math.min(9, deg + choose(rng, [-2, -1, -1, 1, 1, 2])));
+      deg = climax
+        ? Math.min(9, deg + 1) // montée continue vers la résolution
+        : Math.max(0, Math.min(9, deg + choose(rng, [-2, -1, -1, 1, 1, 2])));
       const dur = j === ks.length - 1 ? 0.26 : 0.12;
       const note = timbre.voice
         ? voiceTone({ freq: pentaHz(deg, -12), dur, gain: 0.7 + rng() * 0.4, attack: 0.02 })
@@ -643,16 +718,19 @@ function leadJazz(buf, rng, E, timbre) {
 }
 
 function leadAmbient(buf, rng, E, timbre) {
-  // notes longues aériennes, chevauchées ; queues bouclées circulairement
-  const nNotes = 3 + (rng() < E.dens ? 1 : 0);
+  // arc sur la boucle longue : notes planantes, apex lumineux vers les 3/4
+  // (octave supérieure, un peu plus fort), retour au calme pour resboucler
+  const nNotes = 5 + (rng() < E.dens ? 2 : 0);
   let t = 0;
   for (let k = 0; k < nNotes; k++) {
-    const deg = choose(rng, [0, 2, 3, 4, 5, 7]);
-    const freq = pentaHz(deg, 0) * (rng() < 0.3 ? 2 : 1);
+    const apex = t > LOOP * 1.2 && t < LOOP * 1.7;
+    const deg = apex ? choose(rng, [5, 7]) : choose(rng, [0, 2, 3, 4]);
+    const freq = pentaHz(deg, 0) * (apex || rng() < 0.3 ? 2 : 1);
     const dur = 0.9 + rng() * 0.9;
+    const gain = apex ? 1.1 : 0.85;
     const note = timbre.voice
-      ? voiceTone({ freq, dur, gain: 0.9, attack: 0.35, release: 0.5, amHz: 4 })
-      : tone({ freq, dur, wave: 'sin', attack: 0.4, release: 0.6, gain: 0.9, vibHz: 3, vibDepth: 0.008, harmonics: [0.15] });
+      ? voiceTone({ freq, dur, gain, attack: 0.35, release: 0.5, amHz: 4 })
+      : tone({ freq, dur, wave: 'sin', attack: 0.4, release: 0.6, gain, vibHz: 3, vibDepth: 0.008, harmonics: [0.15] });
     mixInto(buf, t, note);
     t += 0.75 + rng() * 0.75;
   }
@@ -674,28 +752,41 @@ function generateStem(card, slot) {
   const E = ENERGIE[card.energy];
   const fn = RECETTES[slot]?.[card.genre];
   if (!E || !fn) throw new Error(`recette inconnue : ${card.id} (${card.genre}/${card.energy}) slot ${slot}`);
-  const buf = new Float64Array(N);
+  // Le lead boucle sur LEAD_LOOP_MULT × la boucle de base (structure A/A'
+  // + climax) ; les autres slots restent sur la boucle de base.
+  const buf = new Float64Array(slot === 'lead' ? N * LEAD_LOOP_MULT : N);
   fn(buf, rng, E, leadTimbre(card.slots[slot].description));
+
+  // Écho circulaire du lead (par genre) : appliqué avant la normalisation
+  // pour que le pic cible reste tenu, échos compris.
+  if (slot === 'lead') {
+    const echo = LEAD_ECHO[card.genre];
+    if (echo) circularEcho(buf, echo.delay, echo.feedback, echo.wet);
+  }
 
   // Post : retrait du DC, normalisation au pic cible, micro-fades de ~3 ms
   // aux bords (garantit un point de bouclage sans discontinuité).
+  const n = buf.length;
   let mean = 0;
-  for (let i = 0; i < N; i++) mean += buf[i];
-  mean /= N;
+  for (let i = 0; i < n; i++) mean += buf[i];
+  mean /= n;
   let peak = 0;
-  for (let i = 0; i < N; i++) {
+  for (let i = 0; i < n; i++) {
     buf[i] -= mean;
     const a = Math.abs(buf[i]);
     if (a > peak) peak = a;
   }
   if (peak < 1e-9) throw new Error(`stem silencieux : ${card.id}/${slot}`);
-  const scale = E.peak / peak;
-  for (let i = 0; i < N; i++) buf[i] *= scale;
+  // Retour playtest : l'harmonie prenait trop de place dans le mix — voie
+  // légèrement en retrait (~ -2 dB) par rapport aux trois autres.
+  const slotTrim = slot === 'harmonie' ? 0.78 : 1;
+  const scale = (E.peak * slotTrim) / peak;
+  for (let i = 0; i < n; i++) buf[i] *= scale;
   const FADE = Math.round(0.003 * SR);
   for (let i = 0; i < FADE; i++) {
     const g = i / FADE;
     buf[i] *= g;
-    buf[N - 1 - i] *= g;
+    buf[n - 1 - i] *= g;
   }
   return buf;
 }
@@ -728,6 +819,53 @@ function writeWav(path, samples) {
 }
 
 // ---------------------------------------------------------------------------
+// SFX — applaudissements de fin de scène (docs/playtest-2026-08-14.md §4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Foule qui applaudit : des dizaines de « mains » claquant à des instants
+ * aléatoires (claps = bursts de bruit filtré), sur une enveloppe globale qui
+ * monte vite et retombe. Déterministe (PRNG seedé), ~2.8 s.
+ */
+function generateApplause() {
+  const rng = mulberry32(fnv1a('sfx/applause'));
+  const dur = 2.8;
+  const n = Math.round(dur * SR);
+  const out = new Float64Array(n);
+  const NB_CLAPS = 260;
+  for (let c = 0; c < NB_CLAPS; c++) {
+    // Densité maximale vers 0.5 s, claps plus rares vers la fin.
+    const at = Math.min(dur - 0.1, Math.abs(rng() + rng() - 0.7) * dur * 0.75);
+    const s0 = Math.round(at * SR);
+    const decay = 0.008 + rng() * 0.012;
+    const gain = 0.25 + rng() * 0.5;
+    const len = Math.min(Math.round(decay * 6 * SR), n - s0);
+    for (let i = 0; i < len; i++) {
+      out[s0 + i] += (rng() * 2 - 1) * Math.exp(-i / SR / decay) * gain;
+    }
+  }
+  // Corps de foule : souffle continu discret sous les claps.
+  let hiss = 0;
+  for (let i = 0; i < n; i++) {
+    hiss += 0.15 * ((rng() * 2 - 1) - hiss);
+    out[i] += hiss * 0.5;
+  }
+  onePoleHPInPlace(out, 400);
+  onePoleLPInPlace(out, 7000);
+  // Enveloppe globale : montée ~0.15 s, plateau, fondu final.
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const rise = Math.min(1, t / 0.15);
+    const fall = t > dur - 0.8 ? (dur - t) / 0.8 : 1;
+    out[i] *= rise * fall;
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+  if (peak > 1e-9) for (let i = 0; i < n; i++) out[i] *= 0.6 / peak;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -749,6 +887,15 @@ function main() {
       writeWav(file, generateStem(card, slot));
       generated++;
     }
+  }
+  const sfxDir = join(ROOT, 'public', 'assets', 'sfx');
+  const applauseFile = join(sfxDir, 'applause.wav');
+  if (force || !existsSync(applauseFile)) {
+    mkdirSync(sfxDir, { recursive: true });
+    writeWav(applauseFile, generateApplause());
+    generated++;
+  } else {
+    skipped++;
   }
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`stems placeholder : ${generated} générés, ${skipped} ignorés (${dt} s)`);

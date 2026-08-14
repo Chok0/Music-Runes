@@ -87,11 +87,43 @@ export interface ScoringConfig {
   genre_conflicts: { status?: string; pairs: [Genre, Genre][] };
 }
 
+/** Une requête d'une scène : sa recette et les slots actifs (progressivité). */
+export interface SceneRequest {
+  recipe: string;
+  slots: SlotId[];
+}
+
+/** Boutique de fin de scène : choisir 1 carte parmi les 3 premières offres non possédées. */
+export interface SceneShop {
+  intro: string;
+  price: number;
+  /** Ids candidats, dans l'ordre — peut en lister plus de 3 (repli si déjà possédées). */
+  offers: string[];
+}
+
+/** Une scène de la tournée (data/scenes.json — cf. docs/playtest-2026-08-14.md §3). */
+export interface Scene {
+  id: string;
+  name: string;
+  flavor: string;
+  /** Cartes offertes au début de la scène (le deck de départ pour la scène 1). */
+  grants_on_start: string[];
+  /** Carte offerte à la fin de la scène (récompense narrative), optionnelle. */
+  grant_on_end?: string;
+  grant_on_end_flavor?: string;
+  /** Revenu fixe du concert — garantit que la boutique reste toujours abordable. */
+  cachet: number;
+  requests: SceneRequest[];
+  /** Absente sur la dernière scène. */
+  shop?: SceneShop;
+}
+
 /** Données du jeu chargées et validées (module src/data). */
 export interface GameData {
   cards: Card[];
   recipes: Recipe[];
   scoring: ScoringConfig;
+  scenes: Scene[];
   cardById: Map<string, Card>;
   recipeById: Map<string, Recipe>;
 }
@@ -139,10 +171,12 @@ export interface RulesApi {
   /** Interactions d'une seule paire (feedback avant la pose, GDD sections 5/7). */
   pairDetails(a: Card, b: Card, recipe: Recipe, cfg: ScoringConfig): PairDetail[];
   /**
-   * Score max théorique de la recette par énumération exhaustive des C(n,4)
-   * combinaisons du deck (modele-de-donnees §4 « Score max théorique »).
+   * Score max théorique de la recette par énumération exhaustive des
+   * C(n, boardSize) combinaisons du deck (modele-de-donnees §4). `boardSize`
+   * (défaut 4) = nombre de slots actifs de la requête : une requête
+   * tutorielle à 2 slots est notée sur le meilleur plateau de 2 cartes.
    */
-  theoreticalMax(deck: Card[], recipe: Recipe, cfg: ScoringConfig): number;
+  theoreticalMax(deck: Card[], recipe: Recipe, cfg: ScoringConfig, boardSize?: number): number;
   /** Mappe un total sur 0-3 étoiles via star_thresholds (ratio du max théorique). */
   starsFor(total: number, theoreticalMax: number, cfg: ScoringConfig): number;
   /** Libellé français lisible d'une condition (ex. « Au moins 2 cartes Techno »). */
@@ -155,9 +189,19 @@ export interface RulesApi {
 
 export interface GameConfig {
   /** Partis pris de démarrage (à valider en playtest) — voir src/config.ts. */
-  requestsPerSet: number;
   startingHandSize: number;
   drawPerRequest: number;
+}
+
+/** Sauvegarde de tournée (localStorage) — cf. docs/playtest-2026-08-14.md §3. */
+export interface TourSave {
+  version: number;
+  /** Index de la prochaine scène à jouer (scenes.length = tournée terminée). */
+  sceneIndex: number;
+  /** Points cumulés (cachets + scores), dépensables à la boutique. */
+  wallet: number;
+  /** Collection du joueur (ids de cartes). */
+  ownedCardIds: string[];
 }
 
 export type GamePhase = 'title' | 'playing' | 'scored' | 'ended';
@@ -179,6 +223,8 @@ export interface GameState {
   board: Record<SlotId, string | null>;
   /** Index de la requête courante dans la séquence du set (0-based). */
   requestIndex: number;
+  /** Slots jouables pour la requête courante (progressivité tutorielle). */
+  activeSlots: SlotId[];
   results: RequestResult[];
   setScore: number;
 }
@@ -205,12 +251,23 @@ export interface GameStore {
   currentRecipe(): Recipe | null;
 }
 
+/** Une étape du plan de set : recette + slots actifs. */
+export interface RequestPlan {
+  recipe: Recipe;
+  slots: readonly SlotId[];
+}
+
 export interface CreateGameOptions {
   data: GameData;
   rules: RulesApi;
   config: GameConfig;
-  /** Séquence de recettes du set (défaut : ordre du fichier, tronqué à requestsPerSet). */
-  recipeSequence?: Recipe[];
+  /**
+   * Plan du set : recettes + slots actifs par requête (construit depuis une
+   * scène). Défaut : toutes les recettes du fichier, 4 slots actifs.
+   */
+  plan?: RequestPlan[];
+  /** Deck du joueur pour ce set (défaut : toutes les cartes) — base du max théorique. */
+  deckIds?: readonly string[];
   /** Injectable pour des tests déterministes (défaut : Fisher-Yates Math.random). */
   shuffle?: (ids: string[]) => string[];
 }
@@ -245,5 +302,14 @@ export interface AudioEngine {
   stopPreview(): void;
   /** Coupe/rétablit tout l'audio sans perdre l'état des slots. */
   setMuted(muted: boolean): void;
+  /**
+   * Baisse (true) ou rétablit (false) le volume du mix en douceur — ponctuation
+   * sonore de l'écran de score : le mix continue, mais en retrait.
+   */
+  setDucked(ducked: boolean): void;
+  /** Vide tous les slots (fin de scène) sans détruire le moteur : la tournée continue. */
+  clearAllSlots(): void;
+  /** Applaudissements de fin de scène (one-shot, no-op si le SFX est indisponible). */
+  playApplause(): void;
   dispose(): void;
 }

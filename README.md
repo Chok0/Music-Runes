@@ -52,7 +52,7 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 
 ## État du projet
 
-**Prototype MVP jouable.** Le Game Design Document fait office d'unique source de vérité ; le prototype web couvre les jalons M0 à M4 de la [roadmap](docs/roadmap-mvp.md) : boucle complète du set (plateau persistant, remplacement libre), scoring Proposition 1 décomposé ligne à ligne, feedback de synergie/tension avant la pose, mix audible en temps réel (stems placeholder générés) et les 8 recettes en séquence. Prochaine étape : playtests et rééquilibrage des « petits chiffres » de `data/scoring.json`.
+**Prototype MVP jouable, avec sa boucle de progression.** Le Game Design Document fait office d'unique source de vérité ; le prototype web couvre les jalons M0 à M4 de la [roadmap](docs/roadmap-mvp.md) (boucle complète du set, scoring Proposition 1 décomposé, feedback avant la pose, mix audible en temps réel) **plus le jalon M5 issu du [premier playtest](docs/playtest-2026-08-14.md)** : une **tournée de 4 scènes** (tutoriel à slots progressifs → festival), une **économie** (les points gagnés achètent des cartes à la boutique entre les scènes), une collection persistée en localStorage et une célébration de fin de scène. Prochaine étape : playtest de la boucle de fun et rééquilibrage de `data/scoring.json`.
 
 ---
 
@@ -64,9 +64,11 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 | [`docs/architecture-technique.md`](docs/architecture-technique.md) | Architecture du prototype : stack, moteur audio, structure du code |
 | [`docs/roadmap-mvp.md`](docs/roadmap-mvp.md) | Roadmap vers le MVP jouable, jalon par jalon |
 | [`docs/modele-de-donnees.md`](docs/modele-de-donnees.md) | Modèle de données : cartes, recettes, scoring |
-| [`data/cards.json`](data/cards.json) | Les 12 cartes du set MVP (section 9 du GDD) |
-| [`data/recipes.json`](data/recipes.json) | Les 8 recettes de test (section 10 du GDD) |
+| [`data/cards.json`](data/cards.json) | Les 14 cartes du set MVP (section 9 du GDD) |
+| [`data/recipes.json`](data/recipes.json) | Les recettes : les 8 du GDD (section 10) + tutorielles et finale |
+| [`data/scenes.json`](data/scenes.json) | La tournée : 4 scènes, slots progressifs, cadeaux et boutiques |
 | [`data/scoring.json`](data/scoring.json) | Paramètres de scoring (Proposition 1 du GDD) |
+| [`docs/playtest-2026-08-14.md`](docs/playtest-2026-08-14.md) | Retours du playtest #1 et direction design (scènes/économie) |
 
 ---
 
@@ -79,7 +81,7 @@ npm test        # tests unitaires (règles de scoring, machine à états)
 npm run build   # typecheck strict + bundle de production dans dist/
 ```
 
-Par défaut un set enchaîne 6 requêtes ; ajoute `?set=8` à l'URL pour jouer les 8 recettes du GDD. Les stems placeholder (48 boucles WAV synthétisées, La mineur, tempo de `data/audio.json`) sont régénérables avec `npm run stems`.
+La partie suit la tournée de `data/scenes.json` (4 scènes, du tutoriel au festival) ; la progression est sauvegardée en localStorage — « Recommencer à zéro » sur l'écran-titre pour repartir de rien. Les stems placeholder (48 boucles WAV synthétisées, La mineur, tempo de `data/audio.json`) et le SFX d'applaudissements sont régénérables avec `npm run stems`.
 
 Pour comprendre le code avant de contribuer : la [roadmap MVP](docs/roadmap-mvp.md) et l'[architecture technique](docs/architecture-technique.md).
 

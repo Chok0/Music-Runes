@@ -6,8 +6,6 @@ import audioJson from '../data/audio.json';
 import type { AudioEngineOptions, GameConfig } from './types';
 
 export const GAME_CONFIG: GameConfig = {
-  /** Le GDD dit 5-8 (point ouvert). `?set=8` en URL pour jouer les 8 recettes (M4). */
-  requestsPerSet: 6,
   startingHandSize: 6,
   drawPerRequest: 2,
 };
@@ -37,14 +35,5 @@ export const UI_FEEDBACK = {
   shakeMaxPx: 3,
 };
 
-/**
- * Nombre de requêtes du set, surchargé par l'URL (?set=8) et TOUJOURS borné
- * aux recettes disponibles — c'est l'unique endroit où ce clamp est fait
- * (l'UI et le store consomment la valeur telle quelle).
- */
-export function requestsPerSetFromUrl(totalRecipes: number): number {
-  const raw = new URLSearchParams(window.location.search).get('set');
-  const n = raw ? Number.parseInt(raw, 10) : GAME_CONFIG.requestsPerSet;
-  const wanted = !Number.isFinite(n) || n < 1 ? GAME_CONFIG.requestsPerSet : n;
-  return Math.max(1, Math.min(wanted, totalRecipes));
-}
+/** Clé localStorage de la sauvegarde de tournée (bump en cas de schéma incompatible). */
+export const TOUR_SAVE_KEY = 'music-runes.tour.v1';
