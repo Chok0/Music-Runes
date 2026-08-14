@@ -39,7 +39,7 @@ async function loadStem(
     : [...STEM_EXTENSIONS];
   for (const ext of candidates) {
     try {
-      const buffer = await Tone.ToneAudioBuffer.fromUrl(`/${base}.${ext}`);
+      const buffer = await Tone.ToneAudioBuffer.fromUrl(`${import.meta.env.BASE_URL}${base}.${ext}`);
       cache.ext = ext;
       return buffer;
     } catch {
