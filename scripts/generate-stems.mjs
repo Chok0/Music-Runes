@@ -7,13 +7,18 @@
  * mono 44100 Hz, dans public/assets/stems/<id>/<slot>.wav.
  *
  * Contraintes (docs/architecture-technique.md §4) :
- * - 2 mesures à 120 BPM en 4/4 = 4.000 s exactement (176400 échantillons) —
- *   sauf le lead, qui boucle sur 4 mesures (multiple entier de la base,
- *   accepté par le moteur) pour une structure A/A' avec climax ;
- * - tonalité commune La mineur : tous les stems sont superposables ;
+ * - TOUS les stems bouclent sur 4 mesures (2× la boucle de base de
+ *   data/audio.json — le moteur accepte tout multiple entier) et suivent la
+ *   même PROGRESSION D'ACCORDS Am → F → C → G (i–VI–III–VII de La mineur,
+ *   une mesure chacun) : le mix module au lieu de droner sur Am ;
+ * - les leads restent en pentatonique de La mineur : elle est consonante
+ *   sur les quatre accords, donc superposable quel que soit le stem ;
  * - bouclage propre : queues écrites circulairement (modulo la boucle) +
  *   micro-fades de ~3 ms aux bords ;
- * - pic normalisé ≈ 0.5 pour que 4 voies se superposent sans clipper.
+ * - pic normalisé ≈ 0.5 pour que 4 voies se superposent sans clipper ;
+ * - fichiers écrits à 22 050 Hz (le crush 8-bit tient chaque valeur 4
+ *   échantillons à 44.1k : décimer par 2 est sans perte) ; harmonie en
+ *   STÉRÉO (élargissement Haas par rotation circulaire, sûr au bouclage).
  *
  * Déterministe : PRNG mulberry32 seedé par hash de "<id>/<slot>" — deux
  * exécutions produisent les mêmes octets, chaque carte a des motifs distincts
@@ -39,10 +44,29 @@ const AUDIO = JSON.parse(readFileSync(join(ROOT, 'data', 'audio.json'), 'utf8'))
 const SR = 44100;
 const BPM = AUDIO.bpm;
 const BEAT = 60 / BPM; // 0.5 s à 120 BPM
-const LOOP = AUDIO.loop_measures * 4 * BEAT; // en 4/4 (4.000 s par défaut)
-const N = Math.round(SR * LOOP); // échantillons par boucle
+const LOOP = AUDIO.loop_measures * 4 * BEAT; // boucle de BASE en 4/4 (4.000 s par défaut)
+const N = Math.round(SR * LOOP); // échantillons de la boucle de base
+const BAR = 4 * BEAT; // une mesure (2 s)
+const STEM_N = N * 2; // tous les stems bouclent sur 4 mesures (2× la base)
 const STEP = BEAT / 4; // grille de doubles-croches
 const SLOTS = ['rythme', 'basse', 'harmonie', 'lead'];
+
+// ---------------------------------------------------------------------------
+// Progression d'accords partagée — Am → F → C → G (une mesure chacun).
+// Tous les demi-tons sont relatifs à A4. `bass` = fondamentale grave (A1...),
+// `chord` = voicing serré conduit par les voix (les notes communes restent),
+// `seventh`/`rootSemi` = couleurs (7e, 9e) pour le jazz et les nappes.
+// ---------------------------------------------------------------------------
+
+const PROG = [
+  { name: 'Am', bass: -36, rootSemi: -12, chord: [-12, -9, -5], seventh: -2, power: [-24, -17, -12], third: 3 },
+  { name: 'F', bass: -40, rootSemi: -16, chord: [-16, -12, -9], seventh: -5, power: [-28, -21, -16], third: 4 },
+  { name: 'C', bass: -33, rootSemi: -9, chord: [-14, -9, -5], seventh: 2, power: [-21, -14, -9], third: 4 },
+  { name: 'G', bass: -38, rootSemi: -14, chord: [-14, -10, -7], seventh: -4, power: [-26, -19, -14], third: 4 },
+];
+
+/** Accord de la progression à l'instant du pas de double-croche `s` (16/mesure). */
+const chordAtStep = (s) => PROG[Math.floor(s / 16) % 4];
 
 // Modulation par Énergie : densité rythmique, brillance (filtres), saturation,
 // et pic cible (Intense plus fort que Calme, tous < 0.6 pour la superposition).
@@ -350,76 +374,102 @@ function percResonant(rng, { freq, gain = 1 } = {}) {
 // ---------------------------------------------------------------------------
 
 function rythmeTechno(buf, rng, E) {
-  // four-on-the-floor : kick chaque noire, hats sur les contretemps
-  for (let b = 0; b < 8; b++) {
-    mixInto(buf, b * BEAT, kickHit({ f0: 105, f1: 45, ampTau: 0.085, drive: 1 + E.drive * 0.8 }));
-    mixInto(buf, b * BEAT + BEAT / 2, hatHit(rng, { decay: 0.02 + 0.012 * E.bright, gain: 0.32 }));
+  // four-on-the-floor sur 4 mesures : kick chaque noire, hats en contretemps
+  for (let bar = 0; bar < 4; bar++) {
+    for (let b = 0; b < 4; b++) {
+      const t = bar * BAR + b * BEAT;
+      mixInto(buf, t, kickHit({ f0: 105, f1: 45, ampTau: 0.085, drive: 1 + E.drive * 0.8 }));
+      mixInto(buf, t + BEAT / 2, hatHit(rng, { decay: 0.02 + 0.012 * E.bright, gain: 0.32 }));
+    }
+    // charley ouvert en fin de mesure
+    if (E.dens >= 1) mixInto(buf, bar * BAR + 3.5 * BEAT, hatHit(rng, { decay: 0.09, gain: 0.26, hp: 5000 }));
   }
   // doubles-croches fantômes selon la densité
-  for (let s = 0; s < 32; s++) {
+  for (let s = 0; s < 64; s++) {
     if (s % 2 === 0) continue;
     if (rng() < (E.dens - 0.5) * 0.8) {
       mixInto(buf, s * STEP, hatHit(rng, { decay: 0.012, gain: 0.14, hp: 6500 }));
     }
   }
-  if (E.dens >= 1) {
-    // charley ouvert en fin de mesure
-    for (const t of [1.75, 3.75]) mixInto(buf, t, hatHit(rng, { decay: 0.09, gain: 0.26, hp: 5000 }));
+  // Fill : roulement de charley montant sur le dernier temps de la boucle.
+  for (let k = 0; k < 4; k++) {
+    mixInto(buf, 15 * BEAT + k * STEP, hatHit(rng, { decay: 0.02, gain: 0.16 + 0.08 * k, hp: 5200 }));
   }
 }
 
 function rythmeMetal(buf, rng, E) {
-  // double pédale : rafales de doubles-croches, snare backbeat (temps 2 et 4)
-  for (let b = 0; b < 8; b++) {
-    const sub = rng() < 0.15 + 0.6 * E.dens ? 4 : 2;
-    for (let k = 0; k < sub; k++) {
-      mixInto(buf, b * BEAT + (k * BEAT) / sub,
-        kickHit({ f0: 130, f1: 52, dur: 0.14, ampTau: 0.045, drive: 1.5 + E.drive, gain: k % 2 ? 0.8 : 1 }));
+  // double pédale sur 4 mesures, snare backbeat ; fin de boucle en rafale
+  for (let bar = 0; bar < 4; bar++) {
+    for (let b = 0; b < 4; b++) {
+      const isFill = bar === 3 && b >= 2;
+      const sub = isFill ? 4 : rng() < 0.15 + 0.6 * E.dens ? 4 : 2;
+      for (let k = 0; k < sub; k++) {
+        mixInto(buf, bar * BAR + b * BEAT + (k * BEAT) / sub,
+          kickHit({ f0: 130, f1: 52, dur: 0.14, ampTau: 0.045, drive: 1.5 + E.drive, gain: k % 2 ? 0.8 : 1 }));
+      }
+      if (b % 2 === 1) mixInto(buf, bar * BAR + b * BEAT, snareHit(rng, { gain: 1.1, decay: 0.09 }));
     }
-    if (b % 2 === 1) mixInto(buf, b * BEAT, snareHit(rng, { gain: 1.1, decay: 0.09 }));
   }
+  // Fill : snares serrées qui montent vers le rebouclage.
+  [61, 62, 63].forEach((s, i) => {
+    mixInto(buf, s * STEP, snareHit(rng, { gain: 0.65 + 0.18 * i, decay: 0.07 }));
+  });
   if (E.dens >= 1) mixInto(buf, 0, hatHit(rng, { decay: 0.45, gain: 0.22, hp: 4500 })); // pseudo-crash sur le 1
 }
 
 function rythmePop(buf, rng, E) {
   const brushes = E.dens < 0.7; // « beat léger, brushes » en Calme
-  const kicks = [0, 8, 16, 24];
-  if (rng() < 0.7) kicks.push(choose(rng, [10, 11, 22, 26])); // syncope
-  for (const s of kicks) mixInto(buf, s * STEP, kickHit({ f0: 95, f1: 50, ampTau: 0.06, drive: 1 + E.drive * 0.4 }));
-  for (const s of [4, 12, 20, 28]) {
-    mixInto(buf, s * STEP, brushes
-      ? brushHit(rng, { gain: 0.6, attack: 0.005, decay: 0.09 })
-      : snareHit(rng, { gain: 0.9, decay: 0.11, body: 190 }));
+  for (let bar = 0; bar < 4; bar++) {
+    const o = bar * 16;
+    const kicks = [0, 8];
+    if (rng() < 0.7) kicks.push(choose(rng, [6, 10, 11, 14])); // syncope
+    for (const s of kicks) mixInto(buf, (o + s) * STEP, kickHit({ f0: 95, f1: 50, ampTau: 0.06, drive: 1 + E.drive * 0.4 }));
+    for (const s of [4, 12]) {
+      mixInto(buf, (o + s) * STEP, brushes
+        ? brushHit(rng, { gain: 0.6, attack: 0.005, decay: 0.09 })
+        : snareHit(rng, { gain: 0.9, decay: 0.11, body: 190 }));
+    }
+    for (let s = 0; s < 16; s += 2) {
+      const accent = s % 4 === 2 ? 1 : 0.6;
+      mixInto(buf, (o + s) * STEP, brushes
+        ? brushHit(rng, { gain: 0.18 * accent, attack: 0.004, decay: 0.03 })
+        : hatHit(rng, { decay: E.bright > 1 ? 0.03 : 0.02, gain: 0.22 * accent, hp: 6000 }));
+    }
   }
-  for (let s = 0; s < 32; s += 2) {
-    const accent = s % 4 === 2 ? 1 : 0.6;
+  // Fill « pra-ta-ta » avant le rebouclage.
+  [58, 60, 62].forEach((s, i) => {
     mixInto(buf, s * STEP, brushes
-      ? brushHit(rng, { gain: 0.18 * accent, attack: 0.004, decay: 0.03 })
-      : hatHit(rng, { decay: E.bright > 1 ? 0.03 : 0.02, gain: 0.22 * accent, hp: 6000 }));
-  }
+      ? brushHit(rng, { gain: 0.4 + 0.15 * i, attack: 0.004, decay: 0.06 })
+      : snareHit(rng, { gain: 0.55 + 0.2 * i, decay: 0.08 }));
+  });
 }
 
 function rythmeJazz(buf, rng, E) {
-  // ride « ding ding-a-ding » : la skip-note tombe au 2/3 du temps (ternaire)
-  for (let b = 0; b < 8; b++) {
-    mixInto(buf, b * BEAT, hatHit(rng, { decay: 0.18, gain: 0.4 * (b % 2 ? 0.85 : 1), hp: 4200 }));
-    if (b % 2 === 1) {
-      if (rng() < 0.4 + 0.6 * E.dens) {
-        mixInto(buf, b * BEAT + (2 * BEAT) / 3, hatHit(rng, { decay: 0.12, gain: 0.28, hp: 4200 }));
+  // ride « ding ding-a-ding » sur 4 mesures (skip-note ternaire au 2/3)
+  for (let bar = 0; bar < 4; bar++) {
+    for (let b = 0; b < 4; b++) {
+      const t = bar * BAR + b * BEAT;
+      mixInto(buf, t, hatHit(rng, { decay: 0.18, gain: 0.4 * (b % 2 ? 0.85 : 1), hp: 4200 }));
+      if (b % 2 === 1) {
+        if (rng() < 0.4 + 0.6 * E.dens) {
+          mixInto(buf, t + (2 * BEAT) / 3, hatHit(rng, { decay: 0.12, gain: 0.28, hp: 4200 }));
+        }
+        mixInto(buf, t, hatHit(rng, { decay: 0.012, gain: 0.18, hp: 2500 })); // charley au pied
       }
-      mixInto(buf, b * BEAT, hatHit(rng, { decay: 0.012, gain: 0.18, hp: 2500 })); // charley au pied
+      if (b % 2 === 0 || E.dens > 0.7) mixInto(buf, t, brushHit(rng, { gain: 0.2 }));
     }
-    if (b % 2 === 0 || E.dens > 0.7) mixInto(buf, b * BEAT, brushHit(rng, { gain: 0.2 }));
   }
+  // Fill : grand coup de balai qui glisse vers le rebouclage.
+  mixInto(buf, 15 * BEAT, brushHit(rng, { gain: 0.55, attack: 0.25, decay: 0.2 }));
 }
 
 function rythmeAmbient(buf, rng, E) {
-  // percussions éparses : quelques hits résonnants accordés (pentatonique basse)
-  const nHits = Math.max(2, Math.round((3 + rng() * 3) * E.dens));
+  // percussions éparses sur 4 mesures : hits résonnants accordés
+  const nHits = Math.max(3, Math.round((5 + rng() * 4) * E.dens));
   const used = new Set();
   for (let k = 0; k < nHits; k++) {
-    let s = Math.floor(rng() * 32);
-    if (used.has(s)) s = (s + 7) % 32;
+    let s = Math.floor(rng() * 64);
+    if (used.has(s)) s = (s + 13) % 64;
     used.add(s);
     const deg = choose(rng, [0, 1, 2, 4]);
     mixInto(buf, s * STEP, percResonant(rng, { freq: pentaHz(deg, -24), gain: 0.7 + rng() * 0.4 }));
@@ -431,14 +481,16 @@ function rythmeAmbient(buf, rng, E) {
 // ---------------------------------------------------------------------------
 
 function basseTechno(buf, rng, E) {
-  // ligne acide en croches : square + passe-bas résonnant dont le cutoff marche
+  // ligne acide en croches SUR LA PROGRESSION : fondamentale/quinte/octave de
+  // l'accord courant, passe-bas résonnant dont le cutoff marche
   let cutoff = 300;
-  for (let e = 0; e < 16; e++) {
+  for (let e = 0; e < 32; e++) {
     if (rng() < 0.25 * (1 - E.dens)) continue;
-    const semi = choose(rng, [0, 0, 0, 12, 3, 10]); // A1, octave, C, G
+    const chord = chordAtStep(e * 2);
+    const off = choose(rng, [0, 0, 0, 12, 7, 12]); // fondamentale, octave, quinte
     const accent = rng() < 0.3;
     cutoff = Math.max(200, Math.min(3200, cutoff + (rng() * 2 - 1) * 700 * E.bright + (accent ? 400 : 0)));
-    const note = tone({ freq: hz(-36 + semi), dur: 0.16, wave: 'square', attack: 0.003, release: 0.05, gain: accent ? 1.15 : 0.9 });
+    const note = tone({ freq: hz(chord.bass + off), dur: 0.16, wave: 'square', attack: 0.003, release: 0.05, gain: accent ? 1.15 : 0.9 });
     biquadLPInPlace(note, cutoff * (0.6 + 0.4 * E.bright), 5);
     applyDrive(note, 1.2 + E.drive * 0.8);
     mixInto(buf, e * 2 * STEP, note);
@@ -446,58 +498,62 @@ function basseTechno(buf, rng, E) {
 }
 
 function basseMetal(buf, rng, E) {
-  // palm-mute saccadé sur A1 : saw courte très saturée, rafales avec des trous
-  for (let s = 0; s < 32; s++) {
+  // palm-mute saccadé sur la fondamentale de l'accord courant, quinte parfois
+  for (let s = 0; s < 64; s++) {
     const onBeat = s % 4 === 0;
     if (!onBeat && rng() > 0.35 + 0.55 * E.dens) continue;
-    const semi = rng() < 0.12 ? choose(rng, [3, 10]) : 0;
-    const note = tone({ freq: hz(-36 + semi), dur: 0.085, wave: 'saw', attack: 0.002, release: 0.03, gain: onBeat ? 1 : 0.8, drive: 2.5 * E.drive });
+    const chord = chordAtStep(s);
+    const semi = rng() < 0.12 ? choose(rng, [7, 12]) : 0;
+    const note = tone({ freq: hz(chord.bass + semi), dur: 0.085, wave: 'saw', attack: 0.002, release: 0.03, gain: onBeat ? 1 : 0.8, drive: 2.5 * E.drive });
     onePoleLPInPlace(note, 300 + 700 * E.bright);
     mixInto(buf, s * STEP, note);
   }
 }
 
 function bassePop(buf, rng, E) {
-  // ronde et groovy : sinus, attaque douce, motif syncopé
-  const grid = [0, 6, 8, 14, 16, 22, 24, 28];
-  for (let i = 0; i < grid.length; i++) {
-    if (i % 2 === 1 && rng() > 0.3 + 0.7 * E.dens) continue;
-    const semi = rng() < 0.7 ? 0 : choose(rng, [12, 7, 3]); // A, octave, E, C
-    // Triangle : la basse canonique des consoles 8-bit.
-    const note = tone({ freq: hz(-36 + semi), dur: 0.3 + 0.1 * (1 - E.dens), wave: 'tri', attack: 0.02, release: 0.12, gain: 1, drive: 1.2, harmonics: [0.2] });
-    mixInto(buf, grid[i] * STEP, note);
+  // ronde et groovy : triangle (basse 8-bit canonique), motif syncopé par mesure
+  for (let bar = 0; bar < 4; bar++) {
+    const chord = PROG[bar];
+    const grid = [0, 6, 8, 14];
+    for (let i = 0; i < grid.length; i++) {
+      if (i % 2 === 1 && rng() > 0.3 + 0.7 * E.dens) continue;
+      const semi = rng() < 0.7 ? 0 : choose(rng, [12, 7]); // fondamentale, octave, quinte
+      const note = tone({ freq: hz(chord.bass + semi), dur: 0.3 + 0.1 * (1 - E.dens), wave: 'tri', attack: 0.02, release: 0.12, gain: 1, drive: 1.2, harmonics: [0.2] });
+      mixInto(buf, (bar * 16 + grid[i]) * STEP, note);
+    }
   }
 }
 
 function basseJazz(buf, rng, E) {
-  // walking bass en noires sur la gamme de Am, résolution vers A au rebouclage
-  let s = 0; // degré de gamme relatif à A2
-  for (let q = 0; q < 8; q++) {
-    let cur = s;
-    if (q === 0) cur = 0;
-    if (q === 7) cur = rng() < 0.5 ? -1 : 1; // G ou B : sensible vers la tonique
-    const note = tone({ freq: scaleHz(-24, cur), dur: 0.42, wave: 'tri', attack: 0.008, release: 0.09, gain: 0.85 + rng() * 0.3, harmonics: [0.3, 0.12] });
-    mixInto(buf, q * BEAT, note);
-    s = Math.max(-4, Math.min(8, cur + choose(rng, [-2, -1, 1, 1, 2])));
+  // walking bass à travers les CHANGEMENTS : fondamentale, tierce, quinte,
+  // approche chromatique de l'accord suivant — le 1-3-5-approche classique
+  for (let bar = 0; bar < 4; bar++) {
+    const chord = PROG[bar];
+    const next = PROG[(bar + 1) % 4];
+    const root = chord.bass + 12; // registre A2-C3
+    const walk = [
+      root,
+      root + chord.third,
+      root + (rng() < 0.75 ? 7 : 12),
+      next.bass + 12 + (rng() < 0.5 ? -1 : 1), // approche chromatique
+    ];
+    walk.forEach((semi, q) => {
+      const note = tone({ freq: hz(semi), dur: 0.42, wave: 'tri', attack: 0.008, release: 0.09, gain: 0.85 + rng() * 0.3, harmonics: [0.3, 0.12] });
+      mixInto(buf, bar * BAR + q * BEAT, note);
+    });
   }
 }
 
 function basseAmbient(buf, rng, E) {
-  // drone A1 tenu : détune de 0.25 Hz et LFO à cycles entiers sur 4 s → périodique
-  const tmp = new Float64Array(N);
-  const phi = rng() * 2 * Math.PI;
-  let p1 = rng(), p2 = rng(), p3 = rng();
-  const octGain = 0.2 + rng() * 0.15;
-  for (let i = 0; i < N; i++) {
-    const t = i / SR;
-    p1 += 55 / SR;
-    p2 += 55.25 / SR;
-    p3 += 110 / SR;
-    const amp = 0.8 + 0.2 * Math.sin(2 * Math.PI * 0.25 * t + phi);
-    tmp[i] = (Math.sin(2 * Math.PI * p1) + Math.sin(2 * Math.PI * p2) * 0.8 + Math.sin(2 * Math.PI * p3) * octGain) * amp;
+  // drone qui MODULE : une fondamentale par mesure, fondues croisées douces
+  for (let bar = 0; bar < 4; bar++) {
+    const f = hz(PROG[bar].bass);
+    const seg = tone({ freq: f, dur: BAR - 0.25, wave: 'sin', attack: 0.35, release: 0.45, gain: 1, detune: 0.004, harmonics: [0.2] });
+    mixInto(buf, bar * BAR, seg);
+    const oct = tone({ freq: f * 2, dur: BAR - 0.5, wave: 'sin', attack: 0.5, release: 0.5, gain: 0.25 + rng() * 0.1 });
+    mixInto(buf, bar * BAR + 0.1, oct);
   }
-  onePoleLPSweepInPlace(tmp, (t) => 120 + 90 * E.bright * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.5 * t)));
-  mixInto(buf, 0, tmp);
+  onePoleLPSweepInPlace(buf, (t) => 120 + 90 * E.bright * (0.5 + 0.5 * Math.sin((2 * Math.PI * t) / (2 * LOOP))));
 }
 
 // ---------------------------------------------------------------------------
@@ -505,35 +561,42 @@ function basseAmbient(buf, rng, E) {
 // ---------------------------------------------------------------------------
 
 function harmonieTechno(buf, rng, E) {
-  // nappe saw sombre : Am7 grave, saws détunées, passe-bas balayé lentement
-  const pad = new Float64Array(N);
-  for (const semi of [-24, -21, -17, -12]) { // A2 C3 E3 A3
-    const f = hz(semi);
-    const d = choose(rng, [0.25, 0.5]); // détune en Hz à cycles entiers sur la boucle
-    let p1 = rng(), p2 = rng();
-    for (let i = 0; i < N; i++) {
-      p1 += f / SR;
-      p2 += (f + d) / SR;
-      pad[i] += (OSC.saw(p1) + OSC.saw(p2)) * 0.125;
+  // nappe saw sombre qui SUIT LA PROGRESSION (voicing grave + 7e), avec
+  // pompage « sidechain » sur chaque temps — le souffle techno classique
+  const pad = new Float64Array(buf.length);
+  for (let bar = 0; bar < 4; bar++) {
+    const chord = PROG[bar];
+    const semis = [...chord.chord.map((s) => s - 12), chord.seventh - 12];
+    const s0 = Math.round(bar * BAR * SR);
+    const s1 = Math.round((bar + 1) * BAR * SR + 0.06 * SR); // léger recouvrement
+    for (const semi of semis) {
+      const f = hz(semi);
+      const d = choose(rng, [0.25, 0.5]);
+      let p1 = rng(), p2 = rng();
+      for (let i = s0; i < s1; i++) {
+        p1 += f / SR;
+        p2 += (f + d) / SR;
+        const env = Math.min(1, (i - s0) / SR / 0.05, (s1 - i) / SR / 0.06);
+        pad[i % pad.length] += (OSC.saw(p1) + OSC.saw(p2)) * 0.1 * env;
+      }
     }
   }
-  // Retour playtest : la version saturée (tanh × (2+drive)) était agressive —
-  // filtre plus sombre et drive réduit pour une nappe de fond, pas de premier plan.
-  onePoleLPSweepInPlace(pad, (t) => 240 + 260 * E.bright * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.5 * t - Math.PI / 2)));
-  for (let i = 0; i < N; i++) {
+  onePoleLPSweepInPlace(pad, (t) => 240 + 260 * E.bright * (0.5 + 0.5 * Math.sin((2 * Math.PI * t) / (2 * LOOP) - Math.PI / 2)));
+  for (let i = 0; i < pad.length; i++) {
     const t = i / SR;
-    pad[i] = Math.tanh(pad[i] * (1.1 + 0.5 * E.drive)) * (0.75 + 0.25 * Math.sin(Math.PI * t / LOOP) ** 2);
+    const pump = 1 - 0.45 * Math.exp(-(t % BEAT) / 0.09); // creuse chaque temps
+    pad[i] = Math.tanh(pad[i] * (1.1 + 0.5 * E.drive)) * pump;
   }
   mixInto(buf, 0, pad);
 }
 
 function harmonieMetal(buf, rng, E) {
-  // power chord A5 (A2-E3-A3) distordu, martelé en croches
-  const A5 = [-24, -17, -12];
-  for (let e = 0; e < 16; e++) {
+  // power chords distordus martelés en croches, SUR LA PROGRESSION (A5→F5→C5→G5)
+  for (let e = 0; e < 32; e++) {
     if (rng() < 0.1 * (1.2 - E.dens)) continue;
+    const chord = chordAtStep(e * 2);
     const muted = rng() < 0.3;
-    const hit = chordHit(A5, {
+    const hit = chordHit(chord.power, {
       dur: muted ? 0.09 : 0.19, wave: 'saw', attack: 0.003, release: 0.04,
       gain: e % 4 === 0 ? 1 : 0.82, drive: 2.5 + 1.5 * E.drive,
       cutoff: 700 + 1100 * E.bright, q: 0.8,
@@ -543,63 +606,60 @@ function harmonieMetal(buf, rng, E) {
 }
 
 function harmoniePop(buf, rng, E) {
-  // accords plaqués brillants : Am et ses renversements (superposables sur Am)
-  const chords = [
-    [-12, -9, -5], // Am  (A3 C4 E4)
-    [-9, -5, 0],   // Am/C (C4 E4 A4)
-    [-12, -9, -5, -2], // Am7 (A3 C4 E4 G4)
-    [-17, -12, -9],    // Am/E (E3 A3 C4)
-  ];
-  // Retour playtest : les saws brillantes étaient criardes — triangle + partiels
-  // (plus proche d'un piano électrique), attaque adoucie, filtre plus bas.
-  for (let h = 0; h < 4; h++) {
-    const hit = chordHit(chords[h], {
+  // accords plaqués en pulse (piano 8-bit), un accord par mesure + relance,
+  // 7e ajoutée une mesure sur deux pour la couleur
+  for (let bar = 0; bar < 4; bar++) {
+    const chord = PROG[bar];
+    const voicing = bar % 2 === 1 && rng() < 0.6 ? [...chord.chord, chord.seventh] : chord.chord;
+    mixInto(buf, bar * BAR, chordHit(voicing, {
       dur: 0.6, wave: 'pulse25', attack: 0.01, release: 0.3, gain: 1,
       strum: 0.009, cutoff: 700 + 1100 * E.bright, q: 0.8, detune: 0.004,
-    });
-    mixInto(buf, h * BEAT * 2, hit); // un accord par blanche
+    }));
+    mixInto(buf, bar * BAR + 2 * BEAT, chordHit(voicing, {
+      dur: 0.55, wave: 'pulse25', attack: 0.01, release: 0.28, gain: 0.85,
+      strum: 0.009, cutoff: 700 + 1100 * E.bright, q: 0.8, detune: 0.004,
+    }));
     if (E.dens >= 1) {
-      mixInto(buf, h * BEAT * 2 + BEAT * 1.5,
-        chordHit(chords[h], { dur: 0.1, wave: 'pulse25', attack: 0.006, release: 0.06, gain: 0.5, cutoff: 700 + 1100 * E.bright }));
+      mixInto(buf, bar * BAR + 3.5 * BEAT,
+        chordHit(voicing, { dur: 0.1, wave: 'pulse25', attack: 0.006, release: 0.06, gain: 0.5, cutoff: 700 + 1100 * E.bright }));
     }
   }
 }
 
 function harmonieJazz(buf, rng, E) {
-  // Am7/9 feutré type rhodes : sinus + partiels, trémolo léger, comping swing
-  const voicing = [-12, -9, -5, -2, 2]; // A3 C4 E4 G4 B4
-  const swing = [0, 0.833, 1.5, 2.0, 2.833, 3.5]; // temps + « ands » ternaires
-  for (let i = 0; i < swing.length; i++) {
-    if (i !== 0 && rng() > 0.25 + 0.5 * E.dens) continue;
-    const hit = chordHit(voicing, {
-      dur: 0.8 + rng() * 0.4, wave: 'sin', attack: 0.012, release: 0.5,
-      gain: 0.8 + rng() * 0.3, harmonics: [0.35, 0.1], amHz: 5.2, amDepth: 0.22,
-    });
-    mixInto(buf, swing[i], hit);
+  // comping rhodes à travers les changements : 7e + 9e, positions ternaires
+  for (let bar = 0; bar < 4; bar++) {
+    const chord = PROG[bar];
+    const voicing = [...chord.chord, chord.seventh, chord.rootSemi + 14]; // + 9e
+    const swing = [0, 0.833, 1.5]; // temps 1 + « ands » ternaires de la mesure
+    for (let i = 0; i < swing.length; i++) {
+      if (i !== 0 && rng() > 0.25 + 0.5 * E.dens) continue;
+      const hit = chordHit(voicing, {
+        dur: 0.7 + rng() * 0.4, wave: 'sin', attack: 0.012, release: 0.5,
+        gain: 0.8 + rng() * 0.3, harmonics: [0.35, 0.1], amHz: 5.2, amDepth: 0.22,
+      });
+      mixInto(buf, bar * BAR + swing[i], hit);
+    }
   }
 }
 
 function harmonieAmbient(buf, rng, E) {
-  // textures évolutives : tons d'Am en sinus/tri, LFO d'amplitude déphasés
-  // (fréquences de LFO à cycles entiers sur 4 s → boucle continue)
-  const pad = new Float64Array(N);
-  const tones = [-24, -17, -12, -9, -5]; // A2 E3 A3 C4 E4
-  for (const semi of tones) {
-    const f = hz(semi);
-    const lfoHz = choose(rng, [0.25, 0.5, 0.75]);
-    const phi = rng() * 2 * Math.PI;
-    let p1 = rng(), p2 = rng();
-    for (let i = 0; i < N; i++) {
-      const t = i / SR;
-      p1 += f / SR;
-      p2 += (f + 0.25) / SR;
-      const amp = 0.25 + 0.375 * (1 + Math.sin(2 * Math.PI * lfoHz * t + phi));
-      pad[i] += (Math.sin(2 * Math.PI * p1) + OSC.tri(p2) * 0.4) * amp * 0.2;
+  // lavis harmonique : les tons de l'accord courant émergent et s'effacent
+  // lentement, une mesure après l'autre
+  for (let bar = 0; bar < 4; bar++) {
+    const chord = PROG[bar];
+    const tones = [chord.power[0], ...chord.chord, chord.seventh];
+    for (const semi of tones) {
+      if (rng() < 0.2) continue;
+      const note = tone({
+        freq: hz(semi), dur: 1.1 + rng() * 0.6, wave: rng() < 0.5 ? 'sin' : 'tri',
+        attack: 0.4, release: 0.6, gain: 0.5 + rng() * 0.3, detune: 0.003,
+      });
+      mixInto(buf, bar * BAR + rng() * 0.6, note);
     }
   }
   const phi0 = rng() * 2 * Math.PI;
-  onePoleLPSweepInPlace(pad, (t) => 450 + 900 * E.bright * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.25 * t + phi0)));
-  mixInto(buf, 0, pad);
+  onePoleLPSweepInPlace(buf, (t) => 450 + 900 * E.bright * (0.5 + 0.5 * Math.sin((2 * Math.PI * t) / (2 * LOOP) + phi0)));
 }
 
 // ---------------------------------------------------------------------------
@@ -611,9 +671,6 @@ function harmonieAmbient(buf, rng, E) {
 // termine par un CLIMAX (montée, filtre ouvert, note haute tenue). Un écho
 // circulaire par genre (LEAD_ECHO) donne l'espace qui manquait aux timbres.
 // ---------------------------------------------------------------------------
-
-/** Mesures de la boucle lead (multiple de la boucle de base). */
-const LEAD_LOOP_MULT = 2;
 
 /** Écho du lead par genre : delay en s (à 120 BPM : croche 0.25, pointée 0.375). */
 const LEAD_ECHO = {
@@ -775,9 +832,9 @@ function generateStem(card, slot) {
   const E = ENERGIE[card.energy];
   const fn = RECETTES[slot]?.[card.genre];
   if (!E || !fn) throw new Error(`recette inconnue : ${card.id} (${card.genre}/${card.energy}) slot ${slot}`);
-  // Le lead boucle sur LEAD_LOOP_MULT × la boucle de base (structure A/A'
-  // + climax) ; les autres slots restent sur la boucle de base.
-  const buf = new Float64Array(slot === 'lead' ? N * LEAD_LOOP_MULT : N);
+  // Tous les stems bouclent sur 4 mesures : la progression Am→F→C→G a besoin
+  // de la boucle longue, et le moteur accepte tout multiple entier de la base.
+  const buf = new Float64Array(STEM_N);
   fn(buf, rng, E, leadTimbre(card.slots[slot].description));
 
   // Écho circulaire du lead (par genre) : appliqué avant la normalisation
@@ -787,8 +844,8 @@ function generateStem(card, slot) {
     if (echo) circularEcho(buf, echo.delay, echo.feedback, echo.wet);
   }
 
-  // Post : retrait du DC, normalisation au pic cible, micro-fades de ~3 ms
-  // aux bords (garantit un point de bouclage sans discontinuité).
+  // Post : retrait du DC, normalisation, crush 8-bit sur le signal à ±1
+  // (pleine échelle de quantification), puis mise au pic cible.
   const n = buf.length;
   let mean = 0;
   for (let i = 0; i < n; i++) mean += buf[i];
@@ -800,8 +857,6 @@ function generateStem(card, slot) {
     if (a > peak) peak = a;
   }
   if (peak < 1e-9) throw new Error(`stem silencieux : ${card.id}/${slot}`);
-  // Crush 8-bit sur le signal normalisé à ±1 (pleine échelle de quantification),
-  // PUIS mise au pic cible — l'ordre inverse gaspillerait la moitié des niveaux.
   for (let i = 0; i < n; i++) buf[i] /= peak;
   chipCrushInPlace(buf);
   // Retour playtest : l'harmonie prenait trop de place dans le mix — voie
@@ -809,38 +864,82 @@ function generateStem(card, slot) {
   const slotTrim = slot === 'harmonie' ? 0.78 : 1;
   const scale = E.peak * slotTrim;
   for (let i = 0; i < n; i++) buf[i] *= scale;
-  const FADE = Math.round(0.003 * SR);
-  for (let i = 0; i < FADE; i++) {
-    const g = i / FADE;
-    buf[i] *= g;
-    buf[n - 1 - i] *= g;
-  }
+  // PAS de fades ici : ils sont posés par canal APRÈS l'élargissement stéréo
+  // (la rotation Haas doit tourner un signal circulairement continu).
   return buf;
 }
 
 // ---------------------------------------------------------------------------
-// Écriture WAV (PCM 16-bit mono 44100 Hz)
+// Canaux, fades et écriture WAV
 // ---------------------------------------------------------------------------
 
-function writeWav(path, samples) {
-  const n = samples.length;
-  const buf = Buffer.alloc(44 + n * 2);
+/** Micro-fades de ~3 ms aux bords d'un canal (bouclage sans discontinuité). */
+function applyEdgeFades(ch) {
+  const FADE = Math.round(0.003 * SR);
+  for (let i = 0; i < FADE; i++) {
+    const g = i / FADE;
+    ch[i] *= g;
+    ch[ch.length - 1 - i] *= g;
+  }
+}
+
+/** Rotation CIRCULAIRE : le signal généré est continu modulo la boucle,
+ *  donc le canal tourné reste bouclable — c'est ce qui rend l'élargissement
+ *  Haas sûr au rebouclage. */
+function rotated(buf, shift) {
+  const out = new Float64Array(buf.length);
+  for (let i = 0; i < buf.length; i++) out[i] = buf[(i + shift) % buf.length];
+  return out;
+}
+
+/** Décalage Haas (~12.5 ms) : élargit sans déplacer l'image au centre. */
+const HAAS_SAMPLES = Math.round(0.0125 * SR);
+/** Slots écrits en stéréo élargie (le reste est mono : poids des assets). */
+const STEREO_SLOTS = new Set(['harmonie']);
+
+function stemChannels(card, slot) {
+  const mono = generateStem(card, slot);
+  if (!STEREO_SLOTS.has(slot)) {
+    applyEdgeFades(mono);
+    return [mono];
+  }
+  const right = rotated(mono, HAAS_SAMPLES);
+  for (let i = 0; i < right.length; i++) right[i] *= 0.94;
+  applyEdgeFades(mono);
+  applyEdgeFades(right);
+  return [mono, right];
+}
+
+/** Décimation d'écriture : le crush tient chaque valeur 4 échantillons à
+ *  44.1 kHz, écrire à 22 050 Hz est donc sans perte — et divise le poids
+ *  des assets par deux (chargement mobile). */
+const OUT_DECIM = 2;
+const OUT_SR = SR / OUT_DECIM;
+
+function writeWav(path, channels) {
+  const nOut = Math.floor(channels[0].length / OUT_DECIM);
+  const nc = channels.length;
+  const blockAlign = nc * 2;
+  const dataBytes = nOut * blockAlign;
+  const buf = Buffer.alloc(44 + dataBytes);
   buf.write('RIFF', 0);
-  buf.writeUInt32LE(36 + n * 2, 4);
+  buf.writeUInt32LE(36 + dataBytes, 4);
   buf.write('WAVE', 8);
   buf.write('fmt ', 12);
   buf.writeUInt32LE(16, 16); // taille du chunk fmt
   buf.writeUInt16LE(1, 20); // PCM
-  buf.writeUInt16LE(1, 22); // mono
-  buf.writeUInt32LE(SR, 24);
-  buf.writeUInt32LE(SR * 2, 28); // octets/s
-  buf.writeUInt16LE(2, 32); // alignement de bloc
+  buf.writeUInt16LE(nc, 22);
+  buf.writeUInt32LE(OUT_SR, 24);
+  buf.writeUInt32LE(OUT_SR * blockAlign, 28); // octets/s
+  buf.writeUInt16LE(blockAlign, 32);
   buf.writeUInt16LE(16, 34); // bits/échantillon
   buf.write('data', 36);
-  buf.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) {
-    const v = Math.max(-1, Math.min(1, samples[i]));
-    buf.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(v * 32767))), 44 + i * 2);
+  buf.writeUInt32LE(dataBytes, 40);
+  for (let i = 0; i < nOut; i++) {
+    for (let c = 0; c < nc; c++) {
+      const v = Math.max(-1, Math.min(1, channels[c][i * OUT_DECIM]));
+      buf.writeInt16LE(Math.max(-32768, Math.min(32767, Math.round(v * 32767))), 44 + (i * nc + c) * 2);
+    }
   }
   writeFileSync(path, buf);
 }
@@ -913,7 +1012,7 @@ function main() {
         continue;
       }
       mkdirSync(dir, { recursive: true });
-      writeWav(file, generateStem(card, slot));
+      writeWav(file, stemChannels(card, slot));
       generated++;
     }
   }
@@ -921,7 +1020,7 @@ function main() {
   const applauseFile = join(sfxDir, 'applause.wav');
   if (force || !existsSync(applauseFile)) {
     mkdirSync(sfxDir, { recursive: true });
-    writeWav(applauseFile, generateApplause());
+    writeWav(applauseFile, [generateApplause()]);
     generated++;
   } else {
     skipped++;
