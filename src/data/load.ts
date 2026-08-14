@@ -7,6 +7,7 @@
  */
 import cardsJson from '../../data/cards.json';
 import recipesJson from '../../data/recipes.json';
+import scenesJson from '../../data/scenes.json';
 import scoringJson from '../../data/scoring.json';
 import {
   ENERGIES,
@@ -16,7 +17,9 @@ import {
   type GameData,
   type Recipe,
   type RecipeCondition,
+  type Scene,
   type ScoringConfig,
+  type SlotId,
 } from '../types';
 
 class DataError extends Error {
@@ -137,7 +140,76 @@ function validateScoring(raw: unknown): ScoringConfig {
   return s;
 }
 
-/** Charge et valide les trois fichiers de données. Jette une DataError explicite sinon. */
+/**
+ * Valide une scène : ids de cartes/recettes existants, slots valides et sans
+ * doublon, slots strictement croissants d'une requête à l'autre (le plateau
+ * est persistant — un slot ne se re-verrouille pas en cours de scène).
+ */
+function validateScene(
+  raw: unknown,
+  index: number,
+  cardById: Map<string, Card>,
+  recipeById: Map<string, Recipe>,
+): Scene {
+  const s = raw as Scene;
+  const where = `scène #${index + 1}${s && typeof s === 'object' && 'id' in s ? ` (${String(s.id)})` : ''}`;
+  if (!s || typeof s !== 'object') throw new DataError('scenes.json', `${where} : objet attendu`);
+  if (typeof s.id !== 'string' || s.id.length === 0)
+    throw new DataError('scenes.json', `${where} : id manquant`);
+  if (typeof s.name !== 'string' || s.name.length === 0)
+    throw new DataError('scenes.json', `${where} : name manquant`);
+  if (typeof s.flavor !== 'string')
+    throw new DataError('scenes.json', `${where} : flavor (texte) requis`);
+  if (typeof s.cachet !== 'number' || s.cachet < 0)
+    throw new DataError('scenes.json', `${where} : cachet (nombre ≥ 0) requis`);
+  if (!Array.isArray(s.grants_on_start))
+    throw new DataError('scenes.json', `${where} : grants_on_start (liste) requis`);
+  for (const id of s.grants_on_start) {
+    if (!cardById.has(id))
+      throw new DataError('scenes.json', `${where} : carte offerte inconnue « ${String(id)} »`);
+  }
+  if (s.grant_on_end !== undefined && !cardById.has(s.grant_on_end))
+    throw new DataError('scenes.json', `${where} : grant_on_end inconnu « ${String(s.grant_on_end)} »`);
+  if (!Array.isArray(s.requests) || s.requests.length === 0)
+    throw new DataError('scenes.json', `${where} : au moins une requête requise`);
+  let prevSlots: readonly SlotId[] = [];
+  s.requests.forEach((req, i) => {
+    const rWhere = `${where}, requête #${i + 1}`;
+    if (!req || typeof req !== 'object')
+      throw new DataError('scenes.json', `${rWhere} : objet attendu`);
+    if (!recipeById.has(req.recipe))
+      throw new DataError('scenes.json', `${rWhere} : recette inconnue « ${String(req.recipe)} »`);
+    if (!Array.isArray(req.slots) || req.slots.length === 0)
+      throw new DataError('scenes.json', `${rWhere} : slots (liste non vide) requis`);
+    for (const slot of req.slots) {
+      if (!SLOT_IDS.includes(slot))
+        throw new DataError('scenes.json', `${rWhere} : slot inconnu « ${String(slot)} »`);
+    }
+    if (new Set(req.slots).size !== req.slots.length)
+      throw new DataError('scenes.json', `${rWhere} : slots en doublon`);
+    if (!prevSlots.every((slot) => req.slots.includes(slot)))
+      throw new DataError('scenes.json', `${rWhere} : les slots ne peuvent que s'ajouter au fil de la scène (plateau persistant)`);
+    prevSlots = req.slots;
+  });
+  if (s.shop !== undefined) {
+    const shWhere = `${where}, boutique`;
+    if (!s.shop || typeof s.shop !== 'object')
+      throw new DataError('scenes.json', `${shWhere} : objet attendu`);
+    if (typeof s.shop.price !== 'number' || s.shop.price < 0)
+      throw new DataError('scenes.json', `${shWhere} : price (nombre ≥ 0) requis`);
+    if (s.shop.price > s.cachet)
+      throw new DataError('scenes.json', `${shWhere} : price (${s.shop.price}) > cachet (${s.cachet}) — l'achat doit toujours être abordable`);
+    if (!Array.isArray(s.shop.offers) || s.shop.offers.length < 3)
+      throw new DataError('scenes.json', `${shWhere} : au moins 3 offres requises`);
+    for (const id of s.shop.offers) {
+      if (!cardById.has(id))
+        throw new DataError('scenes.json', `${shWhere} : offre inconnue « ${String(id)} »`);
+    }
+  }
+  return s;
+}
+
+/** Charge et valide les quatre fichiers de données. Jette une DataError explicite sinon. */
 export function loadGameData(): GameData {
   const rawCards = (cardsJson as { cards?: unknown[] }).cards;
   if (!Array.isArray(rawCards)) throw new DataError('cards.json', 'clé « cards » (liste) attendue');
@@ -157,5 +229,15 @@ export function loadGameData(): GameData {
   const recipeById = new Map(recipes.map((r) => [r.id, r]));
   if (recipeById.size !== recipes.length) throw new DataError('recipes.json', 'ids de recettes non uniques');
 
-  return { cards, recipes, scoring, cardById, recipeById };
+  const rawScenes = (scenesJson as { scenes?: unknown[] }).scenes;
+  if (!Array.isArray(rawScenes)) throw new DataError('scenes.json', 'clé « scenes » (liste) attendue');
+  const scenes = rawScenes.map((raw, i) => validateScene(raw, i, cardById, recipeById));
+  if (scenes.length === 0) throw new DataError('scenes.json', 'au moins une scène requise');
+  if (new Set(scenes.map((s) => s.id)).size !== scenes.length)
+    throw new DataError('scenes.json', 'ids de scènes non uniques');
+  const first = scenes[0];
+  if (first && first.grants_on_start.length < Math.max(...first.requests.map((r) => r.slots.length)))
+    throw new DataError('scenes.json', 'la première scène doit offrir assez de cartes pour remplir ses slots');
+
+  return { cards, recipes, scoring, scenes, cardById, recipeById };
 }

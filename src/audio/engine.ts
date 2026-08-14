@@ -63,6 +63,7 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
 
   let initPromise: Promise<void> | null = null;
   let previewPlayer: Tone.Player | null = null;
+  let applauseBuffer: Tone.ToneAudioBuffer | null = null;
   let disposed = false;
 
   /** Rampe le gain d'une voie vers `target` à l'instant `time` (contexte audio). */
@@ -128,6 +129,16 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
         player.sync().start(0);
         voices.set(stemKey(card.id, slot), { player, gain });
       }
+    }
+
+    // SFX optionnel (placeholder généré par scripts/generate-stems.mjs) : son
+    // absence n'est jamais bloquante — les applaudissements seront muets.
+    try {
+      applauseBuffer = await Tone.ToneAudioBuffer.fromUrl(
+        `${import.meta.env.BASE_URL}assets/sfx/applause.wav`,
+      );
+    } catch {
+      applauseBuffer = null;
     }
   }
 
@@ -221,6 +232,32 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       g.linearRampToValueAtTime(ducked ? DUCK_GAIN : 1, now + DUCK_RAMP_SECONDS);
     },
 
+    clearAllSlots(): void {
+      if (disposed) return;
+      // Fin de scène : silence immédiat de toutes les voies (pas de
+      // quantification — la scène est finie), état des pending purgé.
+      const now = Tone.now();
+      for (const slot of SLOT_IDS) {
+        const id = pending[slot];
+        if (id !== null) transport.clear(id);
+        pending[slot] = null;
+        pendingTarget[slot] = null;
+        const current = applied[slot];
+        if (current !== null) rampVoice(current, slot, 0, now);
+        applied[slot] = null;
+      }
+    },
+
+    playApplause(): void {
+      if (disposed || !applauseBuffer) return;
+      // One-shot hors mix et hors ducking : les applaudissements doivent
+      // sonner plein volume même pendant l'écran de célébration.
+      const player = new Tone.Player(applauseBuffer).toDestination();
+      player.fadeOut = 0.4;
+      player.onstop = () => player.dispose();
+      player.start(Tone.now());
+    },
+
     dispose(): void {
       if (disposed) return;
       disposed = true;
@@ -239,6 +276,8 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       voices.clear();
       for (const buffer of buffers.values()) buffer.dispose();
       buffers.clear();
+      applauseBuffer?.dispose();
+      applauseBuffer = null;
       master.dispose();
       duck.dispose();
       // Le transport est un singleton global : on l'arrête, on ne le dispose pas.

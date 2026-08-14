@@ -735,6 +735,53 @@ function writeWav(path, samples) {
 }
 
 // ---------------------------------------------------------------------------
+// SFX — applaudissements de fin de scène (docs/playtest-2026-08-14.md §4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Foule qui applaudit : des dizaines de « mains » claquant à des instants
+ * aléatoires (claps = bursts de bruit filtré), sur une enveloppe globale qui
+ * monte vite et retombe. Déterministe (PRNG seedé), ~2.8 s.
+ */
+function generateApplause() {
+  const rng = mulberry32(fnv1a('sfx/applause'));
+  const dur = 2.8;
+  const n = Math.round(dur * SR);
+  const out = new Float64Array(n);
+  const NB_CLAPS = 260;
+  for (let c = 0; c < NB_CLAPS; c++) {
+    // Densité maximale vers 0.5 s, claps plus rares vers la fin.
+    const at = Math.min(dur - 0.1, Math.abs(rng() + rng() - 0.7) * dur * 0.75);
+    const s0 = Math.round(at * SR);
+    const decay = 0.008 + rng() * 0.012;
+    const gain = 0.25 + rng() * 0.5;
+    const len = Math.min(Math.round(decay * 6 * SR), n - s0);
+    for (let i = 0; i < len; i++) {
+      out[s0 + i] += (rng() * 2 - 1) * Math.exp(-i / SR / decay) * gain;
+    }
+  }
+  // Corps de foule : souffle continu discret sous les claps.
+  let hiss = 0;
+  for (let i = 0; i < n; i++) {
+    hiss += 0.15 * ((rng() * 2 - 1) - hiss);
+    out[i] += hiss * 0.5;
+  }
+  onePoleHPInPlace(out, 400);
+  onePoleLPInPlace(out, 7000);
+  // Enveloppe globale : montée ~0.15 s, plateau, fondu final.
+  for (let i = 0; i < n; i++) {
+    const t = i / SR;
+    const rise = Math.min(1, t / 0.15);
+    const fall = t > dur - 0.8 ? (dur - t) / 0.8 : 1;
+    out[i] *= rise * fall;
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+  if (peak > 1e-9) for (let i = 0; i < n; i++) out[i] *= 0.6 / peak;
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -756,6 +803,15 @@ function main() {
       writeWav(file, generateStem(card, slot));
       generated++;
     }
+  }
+  const sfxDir = join(ROOT, 'public', 'assets', 'sfx');
+  const applauseFile = join(sfxDir, 'applause.wav');
+  if (force || !existsSync(applauseFile)) {
+    mkdirSync(sfxDir, { recursive: true });
+    writeWav(applauseFile, generateApplause());
+    generated++;
+  } else {
+    skipped++;
   }
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`stems placeholder : ${generated} générés, ${skipped} ignorés (${dt} s)`);

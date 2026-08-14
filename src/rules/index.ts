@@ -200,27 +200,30 @@ export function createRules(): RulesApi {
       return computePairDetails(a, b, recipe, cfg, buildConflictSet(cfg));
     },
 
-    theoreticalMax(deck: Card[], recipe: Recipe, cfg: ScoringConfig): number {
+    theoreticalMax(deck: Card[], recipe: Recipe, cfg: ScoringConfig, boardSize = 4): number {
       const conflicts = buildConflictSet(cfg);
-      // Deck de 4 cartes ou moins : une seule combinaison, la complète.
-      if (deck.length <= 4) return evaluate(deck, recipe, cfg, conflicts).total;
+      const k = Math.max(1, Math.min(boardSize, deck.length));
+      // Deck ne dépassant pas la taille du plateau : une seule combinaison, la complète.
+      if (deck.length <= k) return evaluate(deck, recipe, cfg, conflicts).total;
+      // Énumération C(n, k) par indices croissants (n ≤ 12, k ≤ 4 : négligeable).
       let max = -Infinity;
-      const n = deck.length;
-      for (let i = 0; i < n - 3; i++) {
-        for (let j = i + 1; j < n - 2; j++) {
-          for (let k = j + 1; k < n - 1; k++) {
-            for (let l = k + 1; l < n; l++) {
-              const a = deck[i];
-              const b = deck[j];
-              const c = deck[k];
-              const d = deck[l];
-              if (!a || !b || !c || !d) continue;
-              const total = evaluate([a, b, c, d], recipe, cfg, conflicts).total;
-              if (total > max) max = total;
-            }
-          }
+      const picked: Card[] = [];
+      const walk = (start: number): void => {
+        if (picked.length === k) {
+          const total = evaluate(picked, recipe, cfg, conflicts).total;
+          if (total > max) max = total;
+          return;
         }
-      }
+        // Borne : il doit rester assez de cartes pour compléter la combinaison.
+        for (let i = start; i <= deck.length - (k - picked.length); i++) {
+          const card = deck[i];
+          if (!card) continue;
+          picked.push(card);
+          walk(i + 1);
+          picked.pop();
+        }
+      };
+      walk(0);
       return max;
     },
 
