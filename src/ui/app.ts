@@ -37,6 +37,7 @@ import { formatPoints } from './format';
 import { renderBreakdownLines } from './score-panel';
 import {
   renderCelebration,
+  renderFailedScreen,
   renderSceneIntro,
   renderScoredModal,
   renderShop,
@@ -66,7 +67,7 @@ const PREVIEW_DELAY_MS = 300;
 type CardOrigin = { kind: 'hand' } | { kind: 'board'; slot: SlotId };
 
 /** Écrans hors set — quand aucun GameStore n'est actif. */
-type MetaPhase = 'title' | 'intro' | 'celebration' | 'shop' | 'tour-ended';
+type MetaPhase = 'title' | 'intro' | 'celebration' | 'shop' | 'failed' | 'tour-ended';
 
 interface DragState {
   cardId: string;
@@ -77,7 +78,8 @@ interface DragState {
   started: boolean;
   ghost: HTMLElement | null;
   hoverSlot: SlotId | null;
-  overHand: boolean;
+  /** Survol de la pioche/défausse (drag down d'une carte de MAIN = échange). */
+  overDiscard: boolean;
   slotPreviewTimer: number | null;
 }
 
@@ -106,6 +108,9 @@ export function mountApp(root: HTMLElement): void {
   let store: GameStore | null = null;
   let unsubscribe: (() => void) | null = null;
   let totalRequests = 0;
+  /** Horloge du public : 1 drain d'attention par mesure en phase playing. */
+  let attentionTimer: number | null = null;
+  const MEASURE_MS = (4 * 60 * 1000) / AUDIO_CONFIG.bpm;
 
   // --- État purement UI (hors stores) ---------------------------------------
   const ui = {
@@ -222,14 +227,67 @@ export function mountApp(root: HTMLElement): void {
       config: GAME_CONFIG,
       plan,
       deckIds: [...save.ownedCardIds],
+      attentionMax: scene.attention ?? GAME_CONFIG.attentionMax,
     });
     unsubscribe = store.subscribe(onStateChange);
     store.startSet();
+    startAttentionClock();
+  }
+
+  // --- Horloge d'attention (la musique est le chronomètre) ------------------
+  function startAttentionClock(): void {
+    stopAttentionClock();
+    attentionTimer = window.setInterval(() => {
+      if (!store) return;
+      // tickAttention est silencieux (pas de re-render : un drag en cours ne
+      // doit pas être interrompu) sauf au passage à zéro → notify → failed.
+      const value = store.tickAttention();
+      updateAttentionDom(value);
+    }, MEASURE_MS);
+  }
+
+  function stopAttentionClock(): void {
+    if (attentionTimer !== null) {
+      window.clearInterval(attentionTimer);
+      attentionTimer = null;
+    }
+  }
+
+  /** Met à jour la jauge SANS re-render (appelé à chaque tick d'horloge). */
+  function updateAttentionDom(value: number): void {
+    const max = store?.getState().attentionMax ?? GAME_CONFIG.attentionMax;
+    const fill = root.querySelector<HTMLElement>('.attention__fill');
+    const label = root.querySelector<HTMLElement>('.attention__value');
+    if (!fill || !label) return;
+    applyAttentionDom(fill, label, value, max);
+  }
+
+  function applyAttentionDom(fill: HTMLElement, label: HTMLElement, value: number, max: number): void {
+    const ratio = max > 0 ? value / max : 0;
+    fill.style.width = `${Math.max(0, Math.min(1, ratio)) * 100}%`;
+    fill.classList.toggle('attention__fill--warn', ratio <= 0.5 && ratio > 0.25);
+    fill.classList.toggle('attention__fill--low', ratio <= 0.25);
+    label.textContent = String(value);
+  }
+
+  /** Jauge à zéro : le public s'en va — concert raté, la scène se rejoue. */
+  function handleSceneFailed(): void {
+    stopAttentionClock();
+    unsubscribe?.();
+    unsubscribe = null;
+    store = null;
+    if (ui.audioStatus === 'ready') {
+      audio.setDucked(false);
+      audio.clearAllSlots(); // silence : la salle est vide
+    }
+    meta = 'failed';
+    renderMeta();
   }
 
   /** Fin de set : fige le résultat, crédite la tournée, célèbre. */
   function handleSceneEnd(state: GameState): void {
     const scene = currentScene();
+    stopAttentionClock();
     unsubscribe?.();
     unsubscribe = null;
     store = null;
@@ -361,6 +419,9 @@ export function mountApp(root: HTMLElement): void {
           );
         }
         break;
+      case 'failed':
+        root.appendChild(renderFailedScreen(currentScene(), () => startScene()));
+        break;
       case 'tour-ended':
         root.appendChild(renderTourEnd({ data, save, onReplay: onResetTour }));
         break;
@@ -400,7 +461,8 @@ export function mountApp(root: HTMLElement): void {
         break;
       }
       case 'ended':
-        // Géré par handleSceneEnd (transition méta) — jamais rendu ici.
+      case 'failed':
+        // Gérés par handleSceneEnd/handleSceneFailed (transition méta) — jamais rendus ici.
         break;
     }
 
@@ -411,6 +473,10 @@ export function mountApp(root: HTMLElement): void {
   function onStateChange(state: GameState): void {
     if (state.phase === 'ended') {
       handleSceneEnd(state);
+      return;
+    }
+    if (state.phase === 'failed') {
+      handleSceneFailed();
       return;
     }
     syncAudio(state);
@@ -448,6 +514,20 @@ export function mountApp(root: HTMLElement): void {
   function renderHud(state: GameState, recipe: Recipe | null, breakdown: ScoreBreakdown | null): HTMLElement {
     const hud = el('header', 'hud');
     const scene = currentScene();
+
+    // Jauge d'attention du public — pleine largeur, mise à jour par l'horloge
+    // sans re-render (updateAttentionDom).
+    const attention = el('div', 'attention');
+    attention.title = 'Attention du public : à zéro, la salle se vide et le concert est raté.';
+    attention.appendChild(el('span', 'attention__icon', '👥'));
+    const bar = el('div', 'attention__bar');
+    const fill = el('div', 'attention__fill');
+    bar.appendChild(fill);
+    attention.appendChild(bar);
+    const value = el('span', 'attention__value');
+    attention.appendChild(value);
+    applyAttentionDom(fill, value, state.attention, state.attentionMax);
+    hud.appendChild(attention);
 
     const request = el('div', 'hud__request');
     request.appendChild(
@@ -661,17 +741,13 @@ export function mountApp(root: HTMLElement): void {
     const id = state.board[slot];
     const card = id ? cardOf(id) : null;
     if (card) {
+      // Nouvelle boucle : posé = posé. Pas de retour en main — la carte ne
+      // quitte la platine que remplacée (détruite) ou déplacée vers un autre slot.
       const cardEl = createCardElement(card, { stemDescription: card.slots[slot].description });
       cardEl.dataset['key'] = `card-${card.id}`;
       if (ui.selectedCardId === card.id) cardEl.classList.add('card--selected');
       attachCardPointerHandlers(cardEl, card, { kind: 'board', slot });
       wrap.appendChild(cardEl);
-
-      const remove = button('slot__remove', '↩', () => store?.removeFromSlot(slot));
-      remove.title = 'Renvoyer en main';
-      remove.setAttribute('aria-label', `Renvoyer ${card.name} en main`);
-      remove.addEventListener('pointerdown', (e) => e.stopPropagation());
-      wrap.appendChild(remove);
     } else {
       wrap.classList.add('slot--empty');
       wrap.appendChild(el('div', 'slot__placeholder', 'Pose une carte'));
@@ -703,6 +779,12 @@ export function mountApp(root: HTMLElement): void {
     details.appendChild(summary);
     if (breakdown) {
       details.appendChild(renderBreakdownLines(breakdown, data));
+      const discValue = store
+        ? placedCards(store.getState()).reduce((acc, c) => acc + c.value, 0)
+        : 0;
+      details.appendChild(
+        el('p', 'score-panel__hint', `💿 Valeur des disques posés : +${discValue} pts au set (au drop).`),
+      );
     } else {
       details.appendChild(el('p', 'score-panel__hint', 'Pose des cartes pour voir la décomposition du score.'));
     }
@@ -727,8 +809,34 @@ export function mountApp(root: HTMLElement): void {
     }
     footer.appendChild(dropRow);
 
+    // Pioche + échanges : la zone est la CIBLE du drag-down d'une carte de
+    // main (défausse destructrice + repioche, dans la limite des échanges).
+    const pile = el('div', 'pile');
+    pile.dataset['discardZone'] = '1';
+    const canMulligan = state.mulligansLeft > 0 && state.deck.length > 0;
+    if (!canMulligan) pile.classList.add('pile--exhausted');
+    pile.appendChild(el('span', 'pile__deck', `🂠 Pioche : ${state.deck.length}`));
+    pile.appendChild(
+      el(
+        'span',
+        'pile__mulligans',
+        `Échanges : ${'●'.repeat(state.mulligansLeft)}${'○'.repeat(Math.max(0, GAME_CONFIG.mulligansPerSet - state.mulligansLeft))}`,
+      ),
+    );
+    pile.appendChild(
+      el(
+        'span',
+        'pile__hint',
+        canMulligan
+          ? 'Glisse ici un disque de ta main pour l’échanger'
+          : state.mulligansLeft <= 0
+            ? 'Plus d’échange possible ce concert'
+            : 'Pioche vide — plus rien à échanger',
+      ),
+    );
+    footer.appendChild(pile);
+
     const hand = el('div', 'hand');
-    hand.dataset['handZone'] = '1'; // cible de drop : renvoyer une carte du plateau en main
     hand.setAttribute('aria-label', 'Main');
     for (const id of state.hand) {
       const card = cardOf(id);
@@ -849,7 +957,7 @@ export function mountApp(root: HTMLElement): void {
         started: false,
         ghost: null,
         hoverSlot: null,
-        overHand: false,
+        overDiscard: false,
         slotPreviewTimer: null,
       };
     });
@@ -872,15 +980,16 @@ export function mountApp(root: HTMLElement): void {
         return;
       }
       const hoverSlot = d.hoverSlot;
-      const overHand = d.overHand;
+      const overDiscard = d.overDiscard;
       cleanupDrag();
       if (hoverSlot) {
         store?.place(d.cardId, hoverSlot); // notifie → re-render
         // Relâchée sur son propre slot (ou un slot verrouillé) : place()
         // no-op sans notification — on efface quand même les halos/deltas.
         if (store) applyActiveFeedback(store.getState());
-      } else if (overHand && d.from.kind === 'board') {
-        store?.removeFromSlot(d.from.slot); // notifie → re-render
+      } else if (overDiscard && d.from.kind === 'hand') {
+        store?.discard(d.cardId); // échange de main (no-op sans mulligan) → re-render
+        if (store) applyActiveFeedback(store.getState());
       } else {
         rerender(); // pas de cible : la carte « revient » simplement
       }
@@ -933,7 +1042,14 @@ export function mountApp(root: HTMLElement): void {
     const rawSlot = slotEl?.dataset['slot'];
     const activeSlots = store?.getState().activeSlots ?? [];
     const slot = activeSlots.find((s) => s === rawSlot) ?? null; // les slots verrouillés ne sont pas des cibles
-    const overHand = hit !== null && hit.closest('[data-hand-zone]') !== null;
+    // La défausse n'accepte que les cartes de MAIN, et seulement s'il reste un échange.
+    const dragState = store?.getState();
+    const overDiscard =
+      hit !== null &&
+      hit.closest('[data-discard-zone]') !== null &&
+      drag.from.kind === 'hand' &&
+      (dragState?.mulligansLeft ?? 0) > 0 &&
+      (dragState?.deck.length ?? 0) > 0;
 
     if (slot !== drag.hoverSlot) {
       drag.hoverSlot = slot;
@@ -952,10 +1068,9 @@ export function mountApp(root: HTMLElement): void {
       if (store) applyActiveFeedback(store.getState());
     }
 
-    if (overHand !== drag.overHand) {
-      drag.overHand = overHand;
-      const handEl = root.querySelector('[data-hand-zone]');
-      handEl?.classList.toggle('hand--drop-target', overHand && drag.from.kind === 'board');
+    if (overDiscard !== drag.overDiscard) {
+      drag.overDiscard = overDiscard;
+      root.querySelector('[data-discard-zone]')?.classList.toggle('pile--drop-target', overDiscard);
     }
   }
 
@@ -971,7 +1086,7 @@ export function mountApp(root: HTMLElement): void {
     stopPreviewIfReady();
     drag?.ghost?.remove();
     root.querySelectorAll('.card--drag-source').forEach((n) => n.classList.remove('card--drag-source'));
-    root.querySelector('[data-hand-zone]')?.classList.remove('hand--drop-target');
+    root.querySelector('[data-discard-zone]')?.classList.remove('pile--drop-target');
     drag = null;
   }
 

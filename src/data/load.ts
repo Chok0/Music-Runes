@@ -41,6 +41,8 @@ function validateCard(raw: unknown, index: number): Card {
     throw new DataError('cards.json', `${where} : genre inconnu « ${String(c.genre)} »`);
   if (!ENERGIES.includes(c.energy))
     throw new DataError('cards.json', `${where} : énergie inconnue « ${String(c.energy)} »`);
+  if (!Number.isInteger(c.value) || c.value < 1 || c.value > 3)
+    throw new DataError('cards.json', `${where} : value (entier 1-3) requis`);
   if (!c.slots || typeof c.slots !== 'object')
     throw new DataError('cards.json', `${where} : slots manquants`);
   for (const slot of SLOT_IDS) {
@@ -162,6 +164,8 @@ function validateScene(
     throw new DataError('scenes.json', `${where} : flavor (texte) requis`);
   if (typeof s.cachet !== 'number' || s.cachet < 0)
     throw new DataError('scenes.json', `${where} : cachet (nombre ≥ 0) requis`);
+  if (s.attention !== undefined && (!Number.isInteger(s.attention) || s.attention < 20))
+    throw new DataError('scenes.json', `${where} : attention (entier ≥ 20) invalide`);
   if (!Array.isArray(s.grants_on_start))
     throw new DataError('scenes.json', `${where} : grants_on_start (liste) requis`);
   for (const id of s.grants_on_start) {

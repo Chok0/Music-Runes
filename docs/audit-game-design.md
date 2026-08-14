@@ -121,16 +121,33 @@ Le public qui change d'avis en cours de requête (idée playtest #1), un DJ
 rival qui pose sur les mêmes platines. Ne poser ce levier qu'une fois la
 tension de base installée — sinon c'est du bruit sur un système sans enjeu.
 
-## 4. Ordonnance — jalon M6 « la tension »
+## 4. Ordonnance — jalon M6 « la tension » — ✅ implémenté (version révisée)
 
-1. **Remplacement limité à 2** par requête (paramètre dans scoring/config,
-   A/B contre libre) + **affichage de la prochaine requête**.
-2. **Étoiles à conséquence** : cachet × étoiles, 0★ = scène à rejouer.
-3. **Horloge musicale** : 8 mesures par requête, auto-drop, bonus de pose en
-   rythme (l'axe 3 du GDD §4 enfin réel) ; option zen.
-4. Ensuite seulement : **poker hands** (relecture du scoring), puis **deck
-   élargi tiré par 4**.
+Révisée avec le designer après l'audit (ses pistes : consommables, valeurs
+sur les disques, jauge d'attention façon Mastermind) :
+
+1. ✅ **Remplacement destructeur** : le disque éjecté d'une platine est
+   PERDU pour le set. Fusionne « consommables » et la question « libre vs
+   limité » du GDD §11 : la destruction est la limite (économique, pas
+   réglementaire), et le plateau reste persistant — le mix continu est
+   préservé. Le réagencement slot↔slot reste gratuit.
+2. ✅ **Échanges de main limités (mulligan)** : 3 par set, en glissant un
+   disque de la main sur la pioche (défausse destructrice + repioche).
+   Refusé sur pioche vide (pas de défausse sèche → pas de soft-lock).
+   Compteurs visibles : pioche restante + pastilles d'échanges.
+3. ✅ **Jauge d'attention du public** : draine 1/mesure en phase de jeu
+   (la musique est l'horloge), −8 par condition ratée au drop, +5 sur un
+   sans-faute. À zéro : la salle se vide, concert raté, scène à rejouer
+   (l'état d'échec qui manquait). La scène tutorielle est plus indulgente
+   (attention 140 — « c'est tes potes »).
+4. ✅ **Valeurs sur les disques (1-3)** : ajoutées au score du set au drop,
+   PAS aux étoiles — étoiles = qualité artistique (tags/recette), valeur =
+   cash. Le dilemme « gros disque qui casse ma cohérence » vit dans cet
+   écart.
+5. À venir : **conditions cachées révélées par la foule** (mastermind-lite),
+   **poker hands** (relecture du scoring), **deck élargi tiré par 4**,
+   bonus de pose en rythme, mode zen.
 
 Critère de réussite du jalon, à vérifier en playtest #4 : le joueur doit
 pouvoir dire « j'ai raté et je sais pourquoi » et « j'ai eu chaud » — les
-deux phrases qui manquent aujourd'hui.
+deux phrases qui manquaient.

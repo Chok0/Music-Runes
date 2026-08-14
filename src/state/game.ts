@@ -60,6 +60,11 @@ export function createGame(opts: CreateGameOptions): GameStore {
   const hand: string[] = [];
   const board = emptyBoard();
   let requestIndex = 0;
+  /** Disques détruits ce set (remplacement destructeur + défausses). */
+  const destroyed: string[] = [];
+  let mulligansLeft = config.mulligansPerSet;
+  const attentionMax = opts.attentionMax ?? config.attentionMax;
+  let attention = attentionMax;
   const results: RequestResult[] = [];
   let setScore = 0;
 
@@ -84,6 +89,10 @@ export function createGame(opts: CreateGameOptions): GameStore {
       board: { ...board },
       requestIndex,
       activeSlots: [...activeSlots()],
+      destroyed: [...destroyed],
+      mulligansLeft,
+      attention,
+      attentionMax,
       results: structuredClone(results),
       setScore,
     };
@@ -142,25 +151,45 @@ export function createGame(opts: CreateGameOptions): GameStore {
       if (handIndex === -1 && sourceSlot === undefined) return; // carte inconnue
       const occupant = board[slot];
       if (sourceSlot !== undefined) {
-        // Déplacement slot → slot : échange si la cible est occupée (occupant
-        // null = simple déplacement, le slot source se vide).
+        // Déplacement slot → slot : réagencement GRATUIT — échange si la
+        // cible est occupée, le slot source se vide sinon. Rien n'est détruit.
         board[sourceSlot] = occupant;
       } else {
         hand.splice(handIndex, 1);
-        // Remplacement (GDD §2 ✅) : la carte en place retourne en MAIN.
-        if (occupant !== null) hand.push(occupant);
+        // Remplacement DESTRUCTEUR (nouvelle boucle, audit §4) : le disque
+        // éjecté de la platine est perdu pour le set — c'est le coût qui
+        // remplace la limite de remplacements du GDD §11. Le plateau, lui,
+        // reste persistant (GDD §11 ✅) : posé = posé jusqu'au remplacement.
+        if (occupant !== null) destroyed.push(occupant);
       }
       board[slot] = cardId;
       notify();
     },
 
-    removeFromSlot(slot) {
+    discard(cardId) {
       if (phase !== 'playing') return;
-      const cardId = board[slot];
-      if (cardId === null) return;
-      board[slot] = null;
-      hand.push(cardId);
+      if (mulligansLeft <= 0) return;
+      // Pioche vide : pas d'échange — une défausse sèche serait une pure
+      // perte et pourrait rendre le plateau non remplissable (soft-lock).
+      if (deck.length === 0) return;
+      const handIndex = hand.indexOf(cardId);
+      if (handIndex === -1) return; // la défausse ne concerne que la MAIN
+      hand.splice(handIndex, 1);
+      destroyed.push(cardId);
+      mulligansLeft -= 1;
+      draw(1);
       notify();
+    },
+
+    tickAttention(amount = config.attentionDrainPerMeasure) {
+      // Le public ne s'impatiente qu'en phase de jeu (pas pendant le récap).
+      if (phase !== 'playing') return attention;
+      attention = Math.max(0, attention - amount);
+      if (attention === 0) {
+        phase = 'failed';
+        notify(); // seule notification du tick : le passage à zéro
+      }
+      return attention;
     },
 
     canDrop,
@@ -185,10 +214,21 @@ export function createGame(opts: CreateGameOptions): GameStore {
       const breakdown = rules.evaluateBoard(placed, recipe, data.scoring);
       const theoreticalMax = theoreticalMaxFor(recipe, placed.length);
       const stars = rules.starsFor(breakdown.total, theoreticalMax, data.scoring);
-      const result: RequestResult = { recipeId: recipe.id, breakdown, stars, theoreticalMax };
+      // Valeur commerciale des disques posés : score du set, PAS les étoiles
+      // (étoiles = qualité artistique ; valeur = cash — cf. types.ts Card.value).
+      const discPoints = placed.reduce((acc, c) => acc + c.value, 0);
+      const result: RequestResult = { recipeId: recipe.id, breakdown, discPoints, stars, theoreticalMax };
       results.push(result);
-      setScore += breakdown.total;
-      phase = 'scored';
+      setScore += breakdown.total + discPoints;
+      // Réaction du public : chaque condition ratée draine l'attention, un
+      // sans-faute en regagne un peu (plafonné au max de la scène).
+      const unmet = breakdown.conditions.filter((c) => !c.met).length;
+      if (unmet > 0) {
+        attention = Math.max(0, attention - unmet * config.attentionUnmetConditionPenalty);
+      } else {
+        attention = Math.min(attentionMax, attention + config.attentionAllMetBonus);
+      }
+      phase = attention === 0 ? 'failed' : 'scored';
       notify();
       // Copie profonde : le résultat interne ne doit pas être mutable de l'extérieur.
       return structuredClone(result);
@@ -217,7 +257,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
     },
 
     currentRecipe() {
-      if (phase === 'title' || phase === 'ended') return null;
+      if (phase === 'title' || phase === 'ended' || phase === 'failed') return null;
       return plan[requestIndex]?.recipe ?? null;
     },
   };

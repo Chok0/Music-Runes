@@ -5,8 +5,9 @@
     {
       "id": "garage",
       "name": "Le Garage",
-      "flavor": "Premier concert. Le public : trois potes, un chat, une multiprise.",
+      "flavor": "Premier concert. Le public : trois potes, un chat, une multiprise. Ils sont patients — c'est tes potes.",
       "grants_on_start": ["loup-statique", "echo-bleute", "lame-cercle", "brume-hexagone"],
+      "attention": 140,
       "cachet": 12,
       "requests": [
         { "recipe": "balances", "slots": ["rythme", "basse"] },

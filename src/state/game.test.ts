@@ -18,7 +18,15 @@ import {
 
 const data = loadGameData();
 
-const TEST_CONFIG: GameConfig = { startingHandSize: 6, drawPerRequest: 2 };
+const TEST_CONFIG: GameConfig = {
+  startingHandSize: 6,
+  drawPerRequest: 2,
+  mulligansPerSet: 3,
+  attentionMax: 100,
+  attentionDrainPerMeasure: 1,
+  attentionUnmetConditionPenalty: 8,
+  attentionAllMetBonus: 5,
+};
 /** Séquence de référence des tests : les 6 premières recettes, 4 slots actifs. */
 const REQUESTS_PER_SET = 6;
 
@@ -29,14 +37,20 @@ function planOf(recipes: Recipe[], slots: readonly (typeof SLOT_IDS)[number][] =
   return recipes.map((recipe) => ({ recipe, slots }));
 }
 
-/** Faux moteur de règles : 4 cartes posées → total 20, max théorique 40 → 2★. */
-function makeFakeRules(): { rules: RulesApi; theoreticalMaxCalls: string[] } {
+/** Faux moteur de règles : 4 cartes posées → total 20, max théorique 40 → 2★.
+ *  `unmetConditions` simule des conditions ratées (drain d'attention au drop). */
+function makeFakeRules(unmetConditions = 0): { rules: RulesApi; theoreticalMaxCalls: string[] } {
   const theoreticalMaxCalls: string[] = [];
   const rules: RulesApi = {
     matchesFilter: () => true,
     evaluateBoard: (placed): ScoreBreakdown => ({
       pairs: [],
-      conditions: [],
+      conditions: Array.from({ length: unmetConditions }, (_, i) => ({
+        index: i,
+        label: `condition ${i}`,
+        met: false,
+        points: 0,
+      })),
       coherence: 0,
       objective: placed.length * 5,
       audacious: 0,
@@ -58,8 +72,9 @@ function newGame(
   config: GameConfig = TEST_CONFIG,
   plan: RequestPlan[] = planOf(data.recipes.slice(0, REQUESTS_PER_SET)),
   deckIds?: readonly string[],
+  unmetConditions = 0,
 ): { game: GameStore; theoreticalMaxCalls: string[] } {
-  const { rules, theoreticalMaxCalls } = makeFakeRules();
+  const { rules, theoreticalMaxCalls } = makeFakeRules(unmetConditions);
   const game = createGame({
     data,
     rules,
@@ -138,7 +153,7 @@ describe('place / removeFromSlot', () => {
     expect(s.hand).toHaveLength(5);
   });
 
-  it('remplacement : la carte en place retourne en main, tailles cohérentes', () => {
+  it('remplacement DESTRUCTEUR : la carte éjectée est perdue pour le set', () => {
     const { game } = newGame();
     game.startSet();
     const first = cardIdAt(0);
@@ -147,12 +162,13 @@ describe('place / removeFromSlot', () => {
     game.place(second, 'rythme');
     const s = game.getState();
     expect(s.board.rythme).toBe(second);
-    expect(s.hand).toContain(first); // la remplacée revient en main
+    expect(s.destroyed).toEqual([first]); // détruite, pas rendue en main
+    expect(s.hand).not.toContain(first);
     expect(s.hand).not.toContain(second);
-    expect(s.hand).toHaveLength(5); // −1 posée, +1 rendue
+    expect(s.hand).toHaveLength(4); // 6 − 2 posées, rien ne revient
   });
 
-  it('échange slot↔slot quand la cible est occupée', () => {
+  it('échange slot↔slot quand la cible est occupée — gratuit, rien de détruit', () => {
     const { game } = newGame();
     game.startSet();
     const a = cardIdAt(0);
@@ -164,6 +180,7 @@ describe('place / removeFromSlot', () => {
     expect(s.board.basse).toBe(a);
     expect(s.board.rythme).toBe(b); // échangées
     expect(s.hand).toHaveLength(4); // la main ne bouge pas
+    expect(s.destroyed).toEqual([]); // le réagencement ne détruit rien
   });
 
   it('déplacement slot → slot vide : le slot source se vide', () => {
@@ -192,19 +209,53 @@ describe('place / removeFromSlot', () => {
     expect(game.getState()).toEqual(before2);
   });
 
-  it('removeFromSlot renvoie la carte en main (no-op sur slot vide)', () => {
+  it('discard (mulligan) : détruit la carte de main, repioche 1, décrémente le compteur', () => {
     const { game } = newGame();
     game.startSet();
     const a = cardIdAt(0);
-    game.place(a, 'harmonie');
-    game.removeFromSlot('harmonie');
+    const deckTop = game.getState().deck[0];
+    game.discard(a);
     const s = game.getState();
-    expect(s.board.harmonie).toBeNull();
-    expect(s.hand).toContain(a);
+    expect(s.destroyed).toEqual([a]);
+    expect(s.hand).not.toContain(a);
+    expect(s.hand).toContain(deckTop); // la repioche compense
     expect(s.hand).toHaveLength(6);
+    expect(s.mulligansLeft).toBe(TEST_CONFIG.mulligansPerSet - 1);
+  });
+
+  it('discard : no-op sur pioche vide (pas de défausse sèche → pas de soft-lock)', () => {
+    const owned = data.cards.slice(0, 4).map((c) => c.id);
+    const { game } = newGame(TEST_CONFIG, planOf(data.recipes.slice(0, 1)), owned);
+    game.startSet(); // main = 4, deck = 0
     const before = game.getState();
-    game.removeFromSlot('harmonie'); // déjà vide
+    expect(before.deck).toHaveLength(0);
+    const id = before.hand[0];
+    if (id === undefined) throw new Error('main vide pendant le test');
+    game.discard(id);
     expect(game.getState()).toEqual(before);
+  });
+
+  it('discard : no-op sans mulligan restant, sur une carte posée, ou hors main', () => {
+    const { game } = newGame();
+    game.startSet();
+    const posed = cardIdAt(0);
+    game.place(posed, 'rythme');
+    const before = game.getState();
+    game.discard(posed); // posée : pas défaussable
+    game.discard('carte-inconnue');
+    expect(game.getState()).toEqual(before);
+    // Épuise les mulligans puis vérifie le no-op.
+    const remaining = () => game.getState().mulligansLeft;
+    while (remaining() > 0) {
+      const id = game.getState().hand[0];
+      if (id === undefined) throw new Error('main vide pendant le test');
+      game.discard(id);
+    }
+    const exhausted = game.getState();
+    const id = exhausted.hand[0];
+    if (id === undefined) throw new Error('main vide pendant le test');
+    game.discard(id);
+    expect(game.getState()).toEqual(exhausted);
   });
 });
 
@@ -221,20 +272,23 @@ describe('canDrop / drop', () => {
     expect(game.canDrop()).toBe(true);
   });
 
-  it('drop : phase scored, résultat stocké, setScore cumulé', () => {
+  it('drop : phase scored, résultat stocké, setScore = score + valeur des disques', () => {
     const { game } = newGame();
     game.startSet();
     fillBoard(game);
+    // Valeur des 4 premières cartes de cards.json (shuffle identité).
+    const discPoints = data.cards.slice(0, 4).reduce((acc, c) => acc + c.value, 0);
     const result = game.drop();
     expect(result.recipeId).toBe(recipeAt(0).id);
     expect(result.breakdown.total).toBe(20); // faux rules : 4 cartes × 5
+    expect(result.discPoints).toBe(discPoints);
     expect(result.theoreticalMax).toBe(40);
-    expect(result.stars).toBe(2); // 20/40 = 0.5
+    expect(result.stars).toBe(2); // 20/40 = 0.5 — la valeur des disques n'étoile pas
     const s = game.getState();
     expect(s.phase).toBe('scored');
     expect(s.results).toHaveLength(1);
     expect(s.results[0]?.recipeId).toBe(recipeAt(0).id);
-    expect(s.setScore).toBe(20);
+    expect(s.setScore).toBe(20 + discPoints);
   });
 
   it('drop jette une Error si les conditions ne sont pas réunies', () => {
@@ -347,7 +401,7 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
   it('deck épuisé : pioches partielles puis nulles, sans erreur', () => {
     // Main de départ n−1 → deck 1 : la première pioche est partielle (1), les suivantes nulles.
     const handSize = data.cards.length - 1;
-    const config: GameConfig = { startingHandSize: handSize, drawPerRequest: 2 };
+    const config: GameConfig = { ...TEST_CONFIG, startingHandSize: handSize };
     const { game } = newGame(config, planOf(data.recipes.slice(0, 3)));
     game.startSet();
     expect(game.getState().deck).toHaveLength(1);
@@ -377,13 +431,73 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
     expect(s.phase).toBe('ended');
     expect(game.currentRecipe()).toBeNull();
     expect(s.results).toHaveLength(6);
-    expect(s.setScore).toBe(120); // 6 × 20
+    // 6 × (20 pts + valeur des 4 mêmes disques, plateau persistant).
+    const discPoints = data.cards.slice(0, 4).reduce((acc, c) => acc + c.value, 0);
+    expect(s.setScore).toBe(6 * (20 + discPoints));
     expect(s.deck).toHaveLength(0); // 8 au départ, 5 pioches de 2 l'épuisent
     // ended : tout est figé
     const before = game.getState();
     game.nextRequest();
     game.place(cardIdAt(0), 'rythme');
     expect(game.getState()).toEqual(before);
+  });
+});
+
+describe('jauge d’attention', () => {
+  it('tickAttention draine sans notifier, sauf passage à zéro → failed', () => {
+    const { game } = newGame();
+    game.startSet();
+    const phases: string[] = [];
+    game.subscribe((s) => phases.push(s.phase));
+    expect(game.tickAttention(30)).toBe(70);
+    expect(phases).toEqual([]); // drain silencieux
+    expect(game.getState().attention).toBe(70); // mais visible au prochain snapshot
+    expect(game.tickAttention(70)).toBe(0);
+    expect(phases).toEqual(['failed']); // seule notification : le zéro
+    expect(game.getState().phase).toBe('failed');
+    expect(game.tickAttention(5)).toBe(0); // no-op hors playing
+  });
+
+  it('drop sans faute regagne de l’attention (plafonnée), conditions ratées la drainent', () => {
+    // Faux rules sans condition ratée → +5 plafonné au max.
+    const { game } = newGame();
+    game.startSet();
+    game.tickAttention(10);
+    fillBoard(game);
+    game.drop();
+    expect(game.getState().attention).toBe(95); // 90 + 5
+    // Faux rules avec 2 conditions ratées → −16.
+    const { game: bad } = newGame(TEST_CONFIG, undefined, undefined, 2);
+    bad.startSet();
+    fillBoard(bad);
+    bad.drop();
+    expect(bad.getState().attention).toBe(100 - 2 * TEST_CONFIG.attentionUnmetConditionPenalty);
+  });
+
+  it('un drop qui vide la jauge fait basculer en failed, pas en scored', () => {
+    const { game } = newGame(TEST_CONFIG, undefined, undefined, 2);
+    game.startSet();
+    game.tickAttention(100 - 2 * TEST_CONFIG.attentionUnmetConditionPenalty); // reste pile le drain du drop
+    fillBoard(game);
+    game.drop();
+    const s = game.getState();
+    expect(s.attention).toBe(0);
+    expect(s.phase).toBe('failed');
+  });
+
+  it('attentionMax de la scène est respectée (opts.attentionMax)', () => {
+    const { rules } = makeFakeRules();
+    const game = createGame({
+      data,
+      rules,
+      config: TEST_CONFIG,
+      plan: planOf(data.recipes.slice(0, 1)),
+      shuffle: identity,
+      attentionMax: 140,
+    });
+    game.startSet();
+    expect(game.getState().attention).toBe(140);
+    expect(game.getState().attentionMax).toBe(140);
   });
 });
 
@@ -409,6 +523,7 @@ describe('subscribe / getState', () => {
     s.board.rythme = 'intrus';
     s.results.push({
       recipeId: 'x',
+      discPoints: 0,
       breakdown: {
         pairs: [], conditions: [], coherence: 0, objective: 0,
         audacious: 0, audaciousApplied: false, total: 0,

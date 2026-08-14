@@ -8,6 +8,13 @@ import type { AudioEngineOptions, GameConfig } from './types';
 export const GAME_CONFIG: GameConfig = {
   startingHandSize: 6,
   drawPerRequest: 2,
+  /** Nouvelle boucle (docs/audit-game-design.md §4) : échanges de main par set. */
+  mulligansPerSet: 3,
+  /** Jauge d'attention : à 120 BPM, 1 mesure = 2 s → 100 ≈ 3 min 20 de jeu pur. */
+  attentionMax: 100,
+  attentionDrainPerMeasure: 1,
+  attentionUnmetConditionPenalty: 8,
+  attentionAllMetBonus: 5,
 };
 
 export const AUDIO_CONFIG: AudioEngineOptions = {

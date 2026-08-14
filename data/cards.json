@@ -6,6 +6,7 @@
       "name": "Loup Statique",
       "genre": "Techno",
       "energy": "Intense",
+      "value": 2,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -31,6 +32,7 @@
       "name": "Écho Bleuté",
       "genre": "Techno",
       "energy": "Calme",
+      "value": 1,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -56,6 +58,7 @@
       "name": "Enclume Rouge",
       "genre": "Metal",
       "energy": "Intense",
+      "value": 2,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -81,6 +84,7 @@
       "name": "Cendre Grise",
       "genre": "Metal",
       "energy": "Neutre",
+      "value": 1,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -106,6 +110,7 @@
       "name": "Néon Carré",
       "genre": "Pop",
       "energy": "Intense",
+      "value": 2,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -131,6 +136,7 @@
       "name": "Ruban Doux",
       "genre": "Pop",
       "energy": "Calme",
+      "value": 1,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -156,6 +162,7 @@
       "name": "Velours Triangle",
       "genre": "Jazz",
       "energy": "Neutre",
+      "value": 2,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -181,6 +188,7 @@
       "name": "Cuivre Calme",
       "genre": "Jazz",
       "energy": "Calme",
+      "value": 1,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -206,6 +214,7 @@
       "name": "Brume Hexagone",
       "genre": "Ambient",
       "energy": "Calme",
+      "value": 1,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -231,6 +240,7 @@
       "name": "Poussière d'Étoile",
       "genre": "Ambient",
       "energy": "Neutre",
+      "value": 2,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -256,6 +266,7 @@
       "name": "Marteau Carré",
       "genre": "Pop",
       "energy": "Neutre",
+      "value": 1,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -281,6 +292,7 @@
       "name": "Lame Cercle",
       "genre": "Techno",
       "energy": "Neutre",
+      "value": 1,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -306,6 +318,7 @@
       "name": "Turbine Noire",
       "genre": "Techno",
       "energy": "Intense",
+      "value": 3,
       "rarity": "commune",
       "slots": {
         "rythme": {
@@ -331,6 +344,7 @@
       "name": "Sirène Carrée",
       "genre": "Pop",
       "energy": "Intense",
+      "value": 3,
       "rarity": "commune",
       "slots": {
         "rythme": {
