@@ -357,6 +357,78 @@ button {
   font-weight: 700;
 }
 
+/* Consigne en pictogrammes : formes = Genres, couleurs = Énergies (GDD §5). */
+.hud__condition-picto {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.hud__picto-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__condition-picto--none .hud__picto-count {
+  color: var(--bad);
+}
+
+.hud__picto-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.12rem;
+}
+
+.picto {
+  width: 1em;
+  height: 1em;
+  display: inline-block;
+  vertical-align: -0.12em;
+}
+
+/* Sans énergie : contour seul (à ne pas confondre avec le gris de Neutre). */
+.picto .picto__shape {
+  fill: none;
+  stroke: #b9bfcc;
+  stroke-width: 8;
+}
+
+.picto[data-energy='Calme'] .picto__shape {
+  fill: var(--calme);
+  stroke: none;
+}
+
+.picto[data-energy='Neutre'] .picto__shape {
+  fill: var(--neutre);
+  stroke: none;
+}
+
+.picto[data-energy='Intense'] .picto__shape {
+  fill: var(--intense-bg);
+  stroke: var(--intense-accent);
+  stroke-width: 8;
+}
+
+.picto-dot {
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.picto-dot[data-energy='Calme'] {
+  background: var(--calme);
+}
+
+.picto-dot[data-energy='Neutre'] {
+  background: var(--neutre);
+}
+
+.picto-dot[data-energy='Intense'] {
+  background: var(--intense-bg);
+  border: 2px solid var(--intense-accent);
+}
+
 .hud__meta {
   display: flex;
   align-items: center;
@@ -413,9 +485,10 @@ button {
    Plateau — 4 slots
    -------------------------------------------------------------------------- */
 .board {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.5rem;
+  gap: 0.9rem;
   padding: 0.5rem;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -475,6 +548,78 @@ button {
   border-style: dashed;
   border-color: #3a3a4c;
   justify-content: flex-start;
+}
+
+/* --------------------------------------------------------------------------
+   Liens entre disques posés (GDD §5/§7) : segments dans les gouttières,
+   diagonales croisées au centre, badge de points au milieu du lien.
+   -------------------------------------------------------------------------- */
+.board-links {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.board-link line {
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.link--good line {
+  stroke: var(--good);
+}
+
+.link--bad line {
+  stroke: var(--bad);
+}
+
+.link--dare line {
+  stroke: var(--dare);
+  stroke-dasharray: 6 4;
+}
+
+.link--neutral line {
+  stroke: #34344a;
+  stroke-dasharray: 2 5;
+}
+
+.board-link rect {
+  fill: #16161f;
+  stroke-width: 1.5;
+}
+
+.board-link text {
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.link--good rect {
+  stroke: var(--good);
+}
+
+.link--good text {
+  fill: var(--good);
+}
+
+.link--bad rect {
+  stroke: var(--bad);
+}
+
+.link--bad text {
+  fill: var(--bad);
+}
+
+.link--dare rect {
+  stroke: var(--dare);
+}
+
+.link--dare text {
+  fill: var(--dare);
 }
 
 /* Slot verrouillé (progressivité tutorielle) : visible mais inerte. */

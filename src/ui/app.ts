@@ -13,9 +13,12 @@ import {
   SLOT_IDS,
   SLOT_LABELS,
   type Card,
+  type ConditionFilter,
+  type Energy,
   type GameState,
   type GameStore,
   type Recipe,
+  type RecipeCondition,
   type RequestResult,
   type Scene,
   type ScoreBreakdown,
@@ -29,7 +32,7 @@ import { createGame } from '../state/game';
 import { createTour } from '../state/tour';
 import { createAudioEngine } from '../audio/engine';
 import { button, el } from './dom';
-import { createCardElement } from './card-view';
+import { createCardElement, genreShapePicto } from './card-view';
 import { formatPoints } from './format';
 import { renderBreakdownLines } from './score-panel';
 import {
@@ -43,8 +46,20 @@ import {
   type TourStatus,
 } from './screens';
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
 /** En deçà, un pointerdown+up est un clic (sélection) ; au-delà, un drag. */
 const DRAG_THRESHOLD_PX = 8;
+
+/** Les 6 paires de slots — les liens dessinés sur le plateau (GDD §5/§7). */
+const PAIR_SLOTS: [SlotId, SlotId][] = [
+  ['rythme', 'basse'],
+  ['rythme', 'harmonie'],
+  ['rythme', 'lead'],
+  ['basse', 'harmonie'],
+  ['basse', 'lead'],
+  ['harmonie', 'lead'],
+];
 /** Délai avant preview sonore au survol (GDD §5 : aperçu, pas d'écoute forcée). */
 const PREVIEW_DELAY_MS = 300;
 
@@ -449,12 +464,16 @@ export function mountApp(root: HTMLElement): void {
       request.appendChild(nameRow);
       if (recipe.flavor) request.appendChild(el('div', 'hud__flavor', recipe.flavor));
 
-      // Conditions évaluées EN DIRECT sur le plateau courant.
+      // Conditions évaluées EN DIRECT sur le plateau courant — la consigne se
+      // lit d'abord en pictogrammes (formes = Genres, couleurs = Énergies,
+      // le même vocabulaire que les cartes), le texte confirme.
       const conds = el('ul', 'hud__conditions');
       recipe.conditions.forEach((cond, i) => {
         const met = breakdown?.conditions.find((c) => c.index === i)?.met ?? false;
         const li = el('li', `hud__condition ${met ? 'is-met' : 'is-unmet'}`);
         li.appendChild(el('span', 'hud__condition-state', met ? '✓' : '○'));
+        const picto = conditionPicto(cond);
+        if (picto) li.appendChild(picto);
         li.appendChild(el('span', 'hud__condition-label', rules.conditionLabel(cond)));
         conds.appendChild(li);
       });
@@ -477,6 +496,131 @@ export function mountApp(root: HTMLElement): void {
     return hud;
   }
 
+  // --- Consigne en pictogrammes ---------------------------------------------
+  function energyDot(energy: Energy): HTMLElement {
+    const dot = el('span', 'picto-dot');
+    dot.dataset['energy'] = energy;
+    return dot;
+  }
+
+  function filterPictos(filter: ConditionFilter): HTMLElement {
+    const wrap = el('span', 'hud__picto-group');
+    const energies = filter.energy ?? [];
+    if (filter.genre && filter.genre.length > 0) {
+      // Une seule énergie dans le filtre : elle colore directement les formes.
+      const single = energies.length === 1 ? energies[0] : undefined;
+      for (const genre of filter.genre) wrap.appendChild(genreShapePicto(genre, single));
+      if (energies.length > 1) for (const e of energies) wrap.appendChild(energyDot(e));
+    } else {
+      for (const e of energies) wrap.appendChild(energyDot(e));
+    }
+    return wrap;
+  }
+
+  /** Pictogramme d'une condition (null : le texte seul reste plus clair). */
+  function conditionPicto(cond: RecipeCondition): HTMLElement | null {
+    switch (cond.type) {
+      case 'min_count': {
+        const box = el('span', 'hud__condition-picto');
+        box.appendChild(el('span', 'hud__picto-count', `≥${cond.count}`));
+        box.appendChild(filterPictos(cond.filter));
+        return box;
+      }
+      case 'none': {
+        const box = el('span', 'hud__condition-picto hud__condition-picto--none');
+        box.appendChild(el('span', 'hud__picto-count', '0×'));
+        box.appendChild(filterPictos(cond.filter));
+        return box;
+      }
+      default:
+        return null; // all_same_genre / all_different_genres : texte explicite
+    }
+  }
+
+  // --- Liens entre disques posés (GDD §5/§7 : le conflit visible) -----------
+  /** Point de sortie du bord de `from` en direction du centre de `to`. */
+  function edgePoint(from: DOMRect, to: DOMRect, origin: DOMRect): { x: number; y: number } {
+    const cx = from.left + from.width / 2 - origin.left;
+    const cy = from.top + from.height / 2 - origin.top;
+    const dx = to.left + to.width / 2 - origin.left - cx;
+    const dy = to.top + to.height / 2 - origin.top - cy;
+    const sx = dx !== 0 ? from.width / 2 / Math.abs(dx) : Infinity;
+    const sy = dy !== 0 ? from.height / 2 / Math.abs(dy) : Infinity;
+    const t = Math.min(sx, sy);
+    return { x: cx + dx * t, y: cy + dy * t };
+  }
+
+  /**
+   * Dessine les liens entre les cartes posées : segments dans les gouttières
+   * du plateau (les deux diagonales se croisent au centre — la « croix »),
+   * colorés par la relation de paire, avec le delta de points en badge.
+   */
+  function renderBoardLinks(board: HTMLElement, state: GameState): void {
+    const recipe = store?.currentRecipe() ?? null;
+    if (!recipe) return;
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.classList.add('board-links');
+    svg.setAttribute('aria-hidden', 'true');
+    board.appendChild(svg);
+    // Les positions exigent un layout accompli : mesure au frame suivant.
+    requestAnimationFrame(() => {
+      if (!svg.isConnected) return;
+      const origin = board.getBoundingClientRect();
+      if (origin.width === 0) return;
+      svg.setAttribute('viewBox', `0 0 ${origin.width} ${origin.height}`);
+      for (const [slotA, slotB] of PAIR_SLOTS) {
+        if (!state.activeSlots.includes(slotA) || !state.activeSlots.includes(slotB)) continue;
+        const idA = state.board[slotA];
+        const idB = state.board[slotB];
+        if (!idA || !idB) continue;
+        const cardA = cardOf(idA);
+        const cardB = cardOf(idB);
+        const elA = board.querySelector(`.slot[data-slot="${slotA}"]`);
+        const elB = board.querySelector(`.slot[data-slot="${slotB}"]`);
+        if (!cardA || !cardB || !elA || !elB) continue;
+
+        const details = rules.pairDetails(cardA, cardB, recipe, data.scoring);
+        const dare = details.some((d) => d.kind === 'requested_conflict');
+        const sum = details.reduce((acc, d) => acc + d.points, 0);
+        const cls = dare ? 'link--dare' : sum > 0 ? 'link--good' : sum < 0 ? 'link--bad' : 'link--neutral';
+
+        const p1 = edgePoint(elA.getBoundingClientRect(), elB.getBoundingClientRect(), origin);
+        const p2 = edgePoint(elB.getBoundingClientRect(), elA.getBoundingClientRect(), origin);
+        const group = document.createElementNS(SVG_NS, 'g');
+        group.setAttribute('class', `board-link ${cls}`);
+        const line = document.createElementNS(SVG_NS, 'line');
+        line.setAttribute('x1', String(p1.x));
+        line.setAttribute('y1', String(p1.y));
+        line.setAttribute('x2', String(p2.x));
+        line.setAttribute('y2', String(p2.y));
+        group.appendChild(line);
+
+        // Badge de points au milieu du lien (pas sur les liens muets).
+        if (cls !== 'link--neutral') {
+          const mx = (p1.x + p2.x) / 2;
+          const my = (p1.y + p2.y) / 2;
+          const label = dare && sum === 0 ? '⚡' : formatPoints(sum);
+          const w = label.length * 7 + 10;
+          const rect = document.createElementNS(SVG_NS, 'rect');
+          rect.setAttribute('x', String(mx - w / 2));
+          rect.setAttribute('y', String(my - 9));
+          rect.setAttribute('width', String(w));
+          rect.setAttribute('height', '18');
+          rect.setAttribute('rx', '9');
+          group.appendChild(rect);
+          const text = document.createElementNS(SVG_NS, 'text');
+          text.setAttribute('x', String(mx));
+          text.setAttribute('y', String(my + 1));
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('dominant-baseline', 'middle');
+          text.textContent = label;
+          group.appendChild(text);
+        }
+        svg.appendChild(group);
+      }
+    });
+  }
+
   function renderBoard(state: GameState, breakdown: ScoreBreakdown | null): HTMLElement {
     const board = el('section', 'board');
     board.setAttribute('aria-label', 'Plateau de mix');
@@ -493,6 +637,7 @@ export function mountApp(root: HTMLElement): void {
     }
 
     for (const slot of SLOT_IDS) board.appendChild(renderSlot(state, slot));
+    renderBoardLinks(board, state);
     return board;
   }
 

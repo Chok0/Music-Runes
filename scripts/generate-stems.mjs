@@ -109,7 +109,29 @@ const OSC = {
   saw: (p) => 2 * (p - Math.floor(p + 0.5)),
   square: (p) => (p % 1 < 0.5 ? 1 : -1),
   tri: (p) => 4 * Math.abs(p - Math.floor(p + 0.5)) - 1,
+  // Pulses à faible rapport cyclique : la voix lead des puces sonores 8-bit.
+  pulse25: (p) => (p % 1 < 0.25 ? 1 : -1),
+  pulse12: (p) => (p % 1 < 0.125 ? 1 : -1),
 };
+
+/**
+ * Esthétique 8-bit (retour playtest #2) : sample-hold (divise le sample rate,
+ * ~11 kHz) + quantification sur peu de niveaux — appliqué à TOUS les stems
+ * après normalisation, pour une identité chiptune uniforme du mix.
+ */
+const CHIP = { holdSamples: 4, levels: 32 };
+
+function chipCrushInPlace(buf) {
+  const half = CHIP.levels / 2;
+  let held = 0;
+  for (let i = 0; i < buf.length; i++) {
+    if (i % CHIP.holdSamples === 0) {
+      const v = Math.max(-1, Math.min(1, buf[i]));
+      held = Math.round(v * half) / half;
+    }
+    buf[i] = held;
+  }
+}
 
 /** Mixe `arr` dans `buf` à partir de t0, en écriture CIRCULAIRE (modulo la
  *  longueur de `buf` — les stems n'ont pas tous la même : le lead boucle sur
@@ -441,7 +463,8 @@ function bassePop(buf, rng, E) {
   for (let i = 0; i < grid.length; i++) {
     if (i % 2 === 1 && rng() > 0.3 + 0.7 * E.dens) continue;
     const semi = rng() < 0.7 ? 0 : choose(rng, [12, 7, 3]); // A, octave, E, C
-    const note = tone({ freq: hz(-36 + semi), dur: 0.3 + 0.1 * (1 - E.dens), wave: 'sin', attack: 0.02, release: 0.12, gain: 1, drive: 1.2, harmonics: [0.2] });
+    // Triangle : la basse canonique des consoles 8-bit.
+    const note = tone({ freq: hz(-36 + semi), dur: 0.3 + 0.1 * (1 - E.dens), wave: 'tri', attack: 0.02, release: 0.12, gain: 1, drive: 1.2, harmonics: [0.2] });
     mixInto(buf, grid[i] * STEP, note);
   }
 }
@@ -453,7 +476,7 @@ function basseJazz(buf, rng, E) {
     let cur = s;
     if (q === 0) cur = 0;
     if (q === 7) cur = rng() < 0.5 ? -1 : 1; // G ou B : sensible vers la tonique
-    const note = tone({ freq: scaleHz(-24, cur), dur: 0.42, wave: 'sin', attack: 0.008, release: 0.09, gain: 0.85 + rng() * 0.3, harmonics: [0.3, 0.12] });
+    const note = tone({ freq: scaleHz(-24, cur), dur: 0.42, wave: 'tri', attack: 0.008, release: 0.09, gain: 0.85 + rng() * 0.3, harmonics: [0.3, 0.12] });
     mixInto(buf, q * BEAT, note);
     s = Math.max(-4, Math.min(8, cur + choose(rng, [-2, -1, 1, 1, 2])));
   }
@@ -531,13 +554,13 @@ function harmoniePop(buf, rng, E) {
   // (plus proche d'un piano électrique), attaque adoucie, filtre plus bas.
   for (let h = 0; h < 4; h++) {
     const hit = chordHit(chords[h], {
-      dur: 0.6, wave: 'tri', attack: 0.01, release: 0.3, gain: 1,
-      strum: 0.009, cutoff: 700 + 1100 * E.bright, q: 0.8, detune: 0.004, harmonics: [0.2],
+      dur: 0.6, wave: 'pulse25', attack: 0.01, release: 0.3, gain: 1,
+      strum: 0.009, cutoff: 700 + 1100 * E.bright, q: 0.8, detune: 0.004,
     });
     mixInto(buf, h * BEAT * 2, hit); // un accord par blanche
     if (E.dens >= 1) {
       mixInto(buf, h * BEAT * 2 + BEAT * 1.5,
-        chordHit(chords[h], { dur: 0.1, wave: 'tri', attack: 0.006, release: 0.06, gain: 0.5, cutoff: 700 + 1100 * E.bright, harmonics: [0.2] }));
+        chordHit(chords[h], { dur: 0.1, wave: 'pulse25', attack: 0.006, release: 0.06, gain: 0.5, cutoff: 700 + 1100 * E.bright }));
     }
   }
 }
@@ -681,7 +704,7 @@ function leadPop(buf, rng, E, timbre) {
       const gain = finalNote ? 1.15 : e % 4 === 0 ? 1.1 : 0.9;
       const note = timbre.voice
         ? voiceTone({ freq: pentaHz(deg, 0), dur, gain, attack: 0.015, release: finalNote ? 0.3 : 0.12 })
-        : tone({ freq: pentaHz(deg, 0), dur, wave: 'tri', attack: 0.008, release: finalNote ? 0.25 : 0.08, gain, cutoff: 1200 + 1800 * E.bright, vibHz: 5, vibDepth: finalNote ? 0.008 : 0.004 });
+        : tone({ freq: pentaHz(deg, 0), dur, wave: 'pulse25', attack: 0.008, release: finalNote ? 0.25 : 0.08, gain, cutoff: 1200 + 1800 * E.bright, vibHz: 5, vibDepth: finalNote ? 0.008 : 0.004 });
       mixInto(buf, bar * 2 + e * 2 * STEP, note);
     }
   }
@@ -711,7 +734,7 @@ function leadJazz(buf, rng, E, timbre) {
       const dur = j === ks.length - 1 ? 0.26 : 0.12;
       const note = timbre.voice
         ? voiceTone({ freq: pentaHz(deg, -12), dur, gain: 0.7 + rng() * 0.4, attack: 0.02 })
-        : tone({ freq: pentaHz(deg, -12), dur, wave: 'tri', attack: 0.02, release: 0.09, gain: 0.7 + rng() * 0.4, cutoff: 700 + 1100 * E.bright, harmonics: [0.25], vibHz: 5.5, vibDepth: 0.005 });
+        : tone({ freq: pentaHz(deg, -12), dur, wave: 'pulse12', attack: 0.02, release: 0.09, gain: 0.7 + rng() * 0.4, cutoff: 700 + 1100 * E.bright, vibHz: 5.5, vibDepth: 0.005 });
       mixInto(buf, b * BEAT + (ks[j] * BEAT) / 3, note);
     }
   }
@@ -777,10 +800,14 @@ function generateStem(card, slot) {
     if (a > peak) peak = a;
   }
   if (peak < 1e-9) throw new Error(`stem silencieux : ${card.id}/${slot}`);
+  // Crush 8-bit sur le signal normalisé à ±1 (pleine échelle de quantification),
+  // PUIS mise au pic cible — l'ordre inverse gaspillerait la moitié des niveaux.
+  for (let i = 0; i < n; i++) buf[i] /= peak;
+  chipCrushInPlace(buf);
   // Retour playtest : l'harmonie prenait trop de place dans le mix — voie
   // légèrement en retrait (~ -2 dB) par rapport aux trois autres.
   const slotTrim = slot === 'harmonie' ? 0.78 : 1;
-  const scale = (E.peak * slotTrim) / peak;
+  const scale = E.peak * slotTrim;
   for (let i = 0; i < n; i++) buf[i] *= scale;
   const FADE = Math.round(0.003 * SR);
   for (let i = 0; i < FADE; i++) {
@@ -861,7 +888,9 @@ function generateApplause() {
   }
   let peak = 0;
   for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
-  if (peak > 1e-9) for (let i = 0; i < n; i++) out[i] *= 0.6 / peak;
+  if (peak > 1e-9) for (let i = 0; i < n; i++) out[i] /= peak;
+  chipCrushInPlace(out); // foule lo-fi, cohérente avec le mix 8-bit
+  for (let i = 0; i < n; i++) out[i] *= 0.6;
   return out;
 }
 
