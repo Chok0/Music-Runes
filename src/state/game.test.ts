@@ -332,7 +332,7 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
     expect(s.requestIndex).toBe(1);
     expect(s.board).toEqual(boardBefore); // plateau persistant (GDD §11)
     expect(s.hand).toHaveLength(4); // 6 − 4 posées + 2 piochées
-    expect(s.deck).toHaveLength(4);
+    expect(s.deck).toHaveLength(data.cards.length - 6 - 2);
     expect(game.currentRecipe()?.id).toBe(recipeAt(1).id);
   });
 
@@ -345,19 +345,20 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
   });
 
   it('deck épuisé : pioches partielles puis nulles, sans erreur', () => {
-    // Main de départ 11 → deck 1 : la première pioche est partielle (1), les suivantes nulles.
-    const config: GameConfig = { startingHandSize: 11, drawPerRequest: 2 };
+    // Main de départ n−1 → deck 1 : la première pioche est partielle (1), les suivantes nulles.
+    const handSize = data.cards.length - 1;
+    const config: GameConfig = { startingHandSize: handSize, drawPerRequest: 2 };
     const { game } = newGame(config, planOf(data.recipes.slice(0, 3)));
     game.startSet();
     expect(game.getState().deck).toHaveLength(1);
     fillBoard(game);
     game.drop();
     game.nextRequest();
-    expect(game.getState().hand).toHaveLength(8); // 11 − 4 + 1 (pioche partielle)
+    expect(game.getState().hand).toHaveLength(handSize - 4 + 1); // pioche partielle
     expect(game.getState().deck).toHaveLength(0);
     game.drop();
     game.nextRequest();
-    expect(game.getState().hand).toHaveLength(8); // pioche nulle, pas d'erreur
+    expect(game.getState().hand).toHaveLength(handSize - 4 + 1); // pioche nulle, pas d'erreur
     game.drop();
     game.nextRequest();
     expect(game.getState().phase).toBe('ended');
@@ -377,7 +378,7 @@ describe('nextRequest — plateau persistant, pioche, fin de set', () => {
     expect(game.currentRecipe()).toBeNull();
     expect(s.results).toHaveLength(6);
     expect(s.setScore).toBe(120); // 6 × 20
-    expect(s.deck).toHaveLength(0); // 6 − 3 pioches de 2
+    expect(s.deck).toHaveLength(0); // 8 au départ, 5 pioches de 2 l'épuisent
     // ended : tout est figé
     const before = game.getState();
     game.nextRequest();
@@ -417,7 +418,7 @@ describe('subscribe / getState', () => {
     });
     const fresh = game.getState();
     expect(fresh.hand).toHaveLength(6);
-    expect(fresh.deck).toHaveLength(6);
+    expect(fresh.deck).toHaveLength(data.cards.length - 6);
     expect(fresh.board.rythme).toBeNull();
     expect(fresh.results).toHaveLength(0);
   });

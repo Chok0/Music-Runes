@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "comment": "La tournée du robot musicien (docs/playtest-2026-08-14.md §3) : chaque scène est une séquence de requêtes avec ses slots actifs (progressivité), ses cartes offertes et sa boutique de fin. « set-stade » et « set-monochrome » sont hors tournée : insatisfiables avec le pool de 12 cartes (1 seule Pop Intense, aucun genre à 4 cartes) — incohérence de contenu à trancher, cf. docs/playtest-2026-08-14.md.",
+  "comment": "La tournée du robot musicien (docs/playtest-2026-08-14.md §3) : chaque scène est une séquence de requêtes avec ses slots actifs (progressivité), ses cartes offertes et sa boutique de fin. Les 8 recettes du GDD §10 sont toutes jouées : « Turbine Noire » et « Sirène Carrée » (ajoutées au pool, GDD §9) rendent « set-monochrome » et « set-stade » satisfiables — les cartes nécessaires sont GARANTIES par des cadeaux (grants), jamais dépendantes d'un choix de boutique (invariant vérifié par src/state/tour.test.ts).",
   "scenes": [
     {
       "id": "garage",
@@ -42,13 +42,15 @@
       "name": "L'Anniversaire de Louison",
       "flavor": "Une fête d'enfants. Le père, casque antibruit sur les oreilles du bébé : « On aime le Metal, ici. Mais en doux. »",
       "grants_on_start": [],
+      "grant_on_end": "turbine-noire",
+      "grant_on_end_flavor": "L'ado de la fête, DJ en secret, te glisse un disque : « Ma techno la plus dure. Chez nous, personne ne comprend. »",
       "cachet": 12,
       "requests": [
         { "recipe": "metal-pour-bebe", "slots": ["rythme", "basse", "harmonie", "lead"] },
         { "recipe": "techno-romantique", "slots": ["rythme", "basse", "harmonie", "lead"] }
       ],
       "shop": {
-        "intro": "Le disquaire, encore. « Dernière halte avant le festival. Complète ta caisse. »",
+        "intro": "Le disquaire, encore. « Un stade t'attend. Complète ta caisse. »",
         "price": 10,
         "offers": [
           "enclume-rouge",
@@ -62,13 +64,36 @@
       }
     },
     {
+      "id": "stade",
+      "name": "Le Stade des Lumières",
+      "flavor": "Quarante mille personnes. L'organisateur tend deux disques : « Playlist imposée. Deux tubes calibrés, et tout le monde rentre content. »",
+      "grants_on_start": ["neon-carre", "sirene-carree"],
+      "cachet": 15,
+      "requests": [
+        { "recipe": "set-stade", "slots": ["rythme", "basse", "harmonie", "lead"] }
+      ],
+      "shop": {
+        "intro": "Le disquaire a suivi la tournée. « Dernière halte avant le festival. Fais-toi plaisir. »",
+        "price": 10,
+        "offers": [
+          "enclume-rouge",
+          "velours-triangle",
+          "cuivre-calme",
+          "poussiere-d-etoile",
+          "marteau-carre",
+          "ruban-doux"
+        ]
+      }
+    },
+    {
       "id": "grand-mix",
       "name": "Le Grand Mix",
       "flavor": "Le festival. Des vrais gens, une vraie scène, un vrai cachet. Ne pense pas au chat du garage.",
-      "grants_on_start": [],
+      "grants_on_start": ["turbine-noire"],
       "cachet": 15,
       "requests": [
         { "recipe": "improvisation-totale", "slots": ["rythme", "basse", "harmonie", "lead"] },
+        { "recipe": "set-monochrome", "slots": ["rythme", "basse", "harmonie", "lead"] },
         { "recipe": "le-rappel", "slots": ["rythme", "basse", "harmonie", "lead"] }
       ]
     }

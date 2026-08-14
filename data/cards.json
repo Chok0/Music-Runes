@@ -300,6 +300,56 @@
           "stem": "assets/stems/lame-cercle/lead.ogg"
         }
       }
+    },
+    {
+      "id": "turbine-noire",
+      "name": "Turbine Noire",
+      "genre": "Techno",
+      "energy": "Intense",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Martèlement mécanique serré",
+          "stem": "assets/stems/turbine-noire/rythme.ogg"
+        },
+        "basse": {
+          "description": "Sub rotatif, pression constante",
+          "stem": "assets/stems/turbine-noire/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Nappe stroboscopique",
+          "stem": "assets/stems/turbine-noire/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Sifflement de machine lancée",
+          "stem": "assets/stems/turbine-noire/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "sirene-carree",
+      "name": "Sirène Carrée",
+      "genre": "Pop",
+      "energy": "Intense",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Beat stade, claps larges",
+          "stem": "assets/stems/sirene-carree/rythme.ogg"
+        },
+        "basse": {
+          "description": "Synth-bass glissée, sirène",
+          "stem": "assets/stems/sirene-carree/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Accords néon saturés",
+          "stem": "assets/stems/sirene-carree/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Voix sirène, montée irrésistible",
+          "stem": "assets/stems/sirene-carree/lead.ogg"
+        }
+      }
     }
   ]
 }

@@ -387,7 +387,7 @@ describe('theoreticalMax', () => {
     expect(rules.theoreticalMax(deck, recipe('ouverture-club'), cfg)).toBe(13);
   });
 
-  it('deck complet de 12 cartes : énumère les 495 combinaisons sans erreur', () => {
+  it('deck complet : énumère toutes les combinaisons C(n,4) sans erreur', () => {
     // Borne de cohérence (pas de valeur pointée à la main sur 495 combos) :
     // le max est au moins celui d'une combinaison connue, ici 14 (cf. ci-dessus).
     const max = rules.theoreticalMax(data.cards, recipe('ouverture-club'), cfg);

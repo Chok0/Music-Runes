@@ -64,7 +64,7 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 | [`docs/architecture-technique.md`](docs/architecture-technique.md) | Architecture du prototype : stack, moteur audio, structure du code |
 | [`docs/roadmap-mvp.md`](docs/roadmap-mvp.md) | Roadmap vers le MVP jouable, jalon par jalon |
 | [`docs/modele-de-donnees.md`](docs/modele-de-donnees.md) | Modèle de données : cartes, recettes, scoring |
-| [`data/cards.json`](data/cards.json) | Les 12 cartes du set MVP (section 9 du GDD) |
+| [`data/cards.json`](data/cards.json) | Les 14 cartes du set MVP (section 9 du GDD) |
 | [`data/recipes.json`](data/recipes.json) | Les recettes : les 8 du GDD (section 10) + tutorielles et finale |
 | [`data/scenes.json`](data/scenes.json) | La tournée : 4 scènes, slots progressifs, cadeaux et boutiques |
 | [`data/scoring.json`](data/scoring.json) | Paramètres de scoring (Proposition 1 du GDD) |
