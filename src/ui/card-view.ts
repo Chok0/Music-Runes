@@ -49,6 +49,24 @@ const SHAPES: Record<Genre, { build: () => SVGElement; glyphY: number }> = {
   Ambient: { build: () => polygon('50,5 89,27.5 89,72.5 50,95 11,72.5 11,27.5'), glyphY: 50 },
 };
 
+/**
+ * Mini-pictogramme d'un Genre (sa forme) pour les consignes (GDD §5 : la
+ * consigne doit se lire dans le même vocabulaire visuel que les cartes).
+ * `energy` colore la forme ; absente = forme « n'importe quelle énergie »
+ * (contour seul, pour ne pas se confondre avec le gris de Neutre).
+ */
+export function genreShapePicto(genre: Genre, energy?: string): SVGSVGElement {
+  const svg = svgEl('svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add('picto');
+  const shape = SHAPES[genre].build();
+  shape.classList.add('picto__shape');
+  if (energy) svg.dataset['energy'] = energy;
+  svg.appendChild(shape);
+  return svg;
+}
+
 export interface CardViewOptions {
   /** Description du stem pour le slot où la carte est posée (info audio/UI). */
   stemDescription?: string;
