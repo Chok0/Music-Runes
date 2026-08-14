@@ -44,6 +44,13 @@ export interface Card {
   name: string;
   genre: Genre;
   energy: Energy;
+  /**
+   * Valeur commerciale du disque (1-3) — points ajoutés au score du set au
+   * drop (RequestResult.discPoints). N'entre PAS dans le calcul d'étoiles :
+   * étoiles = qualité artistique (tags/recette), valeur = cash. Le dilemme
+   * « gros disque qui casse ma cohérence » vit dans cet écart.
+   */
+  value: number;
   rarity: string;
   slots: Record<SlotId, CardSlotVariant>;
 }
@@ -106,6 +113,8 @@ export interface Scene {
   id: string;
   name: string;
   flavor: string;
+  /** Jauge d'attention du public au départ (défaut : config). Vide = concert raté. */
+  attention?: number;
   /** Cartes offertes au début de la scène (le deck de départ pour la scène 1). */
   grants_on_start: string[];
   /** Carte offerte à la fin de la scène (récompense narrative), optionnelle. */
@@ -191,6 +200,16 @@ export interface GameConfig {
   /** Partis pris de démarrage (à valider en playtest) — voir src/config.ts. */
   startingHandSize: number;
   drawPerRequest: number;
+  /** Échanges de main (défausse + repioche) autorisés par SET. */
+  mulligansPerSet: number;
+  /** Jauge d'attention de départ si la scène n'en précise pas. */
+  attentionMax: number;
+  /** Drain d'attention par mesure écoulée en phase playing. */
+  attentionDrainPerMeasure: number;
+  /** Drain d'attention par condition non remplie au drop. */
+  attentionUnmetConditionPenalty: number;
+  /** Regain d'attention quand TOUTES les conditions du drop sont remplies. */
+  attentionAllMetBonus: number;
 }
 
 /** Sauvegarde de tournée (localStorage) — cf. docs/playtest-2026-08-14.md §3. */
@@ -204,11 +223,14 @@ export interface TourSave {
   ownedCardIds: string[];
 }
 
-export type GamePhase = 'title' | 'playing' | 'scored' | 'ended';
+/** `failed` : la jauge d'attention est tombée à zéro — concert raté. */
+export type GamePhase = 'title' | 'playing' | 'scored' | 'ended' | 'failed';
 
 export interface RequestResult {
   recipeId: string;
   breakdown: ScoreBreakdown;
+  /** Valeur commerciale des disques posés — s'ajoute au score du set, pas aux étoiles. */
+  discPoints: number;
   stars: number;
   theoreticalMax: number;
 }
@@ -225,6 +247,13 @@ export interface GameState {
   requestIndex: number;
   /** Slots jouables pour la requête courante (progressivité tutorielle). */
   activeSlots: SlotId[];
+  /** Disques détruits ce set (remplacés sur platine ou défaussés) — perdus jusqu'à la fin du set. */
+  destroyed: string[];
+  /** Échanges de main restants (défausse + repioche). */
+  mulligansLeft: number;
+  /** Jauge d'attention du public (0 = concert raté, phase failed). */
+  attention: number;
+  attentionMax: number;
   results: RequestResult[];
   setScore: number;
 }
@@ -235,16 +264,27 @@ export interface GameStore {
   /** title → playing : mélange le deck, pioche la main de départ. */
   startSet(): void;
   /**
-   * Pose `cardId` (depuis la main ou depuis un autre slot) sur `slot`.
-   * Si le slot est occupé, la carte en place retourne en main (remplacement,
-   * GDD section 2 ✅ — jamais d'empilement). No-op si la phase ≠ playing.
+   * Pose `cardId` sur `slot`. Depuis la MAIN sur un slot occupé : la carte
+   * en place est DÉTRUITE pour le set (remplacement destructeur — le coût qui
+   * remplace la limite de remplacements du GDD §11). Entre deux slots :
+   * échange libre (réagencement gratuit). No-op si la phase ≠ playing.
    */
   place(cardId: string, slot: SlotId): void;
-  /** Renvoie la carte du slot en main (ajustement avant drop). */
-  removeFromSlot(slot: SlotId): void;
+  /**
+   * Échange de main : détruit `cardId` (main uniquement) et pioche 1 disque
+   * si le deck n'est pas vide. Consomme 1 mulligan. No-op sans mulligan
+   * restant ou hors phase playing.
+   */
+  discard(cardId: string): void;
+  /**
+   * Drain d'attention (appelé par l'horloge de l'app, une fois par mesure).
+   * SILENCIEUX (pas de notification) sauf passage à zéro → phase failed +
+   * notification. Retourne l'attention restante.
+   */
+  tickAttention(amount?: number): number;
   /** true si les 4 slots sont remplis et la phase est playing. */
   canDrop(): boolean;
-  /** Score la requête courante (phase → scored) et retourne le résultat. */
+  /** Score la requête courante (phase → scored, ou failed si le public part). */
   drop(): RequestResult;
   /** scored → playing (requête suivante, pioche) ou → ended après la dernière. */
   nextRequest(): void;
@@ -268,6 +308,8 @@ export interface CreateGameOptions {
   plan?: RequestPlan[];
   /** Deck du joueur pour ce set (défaut : toutes les cartes) — base du max théorique. */
   deckIds?: readonly string[];
+  /** Jauge d'attention de départ (défaut : config.attentionMax). */
+  attentionMax?: number;
   /** Injectable pour des tests déterministes (défaut : Fisher-Yates Math.random). */
   shuffle?: (ids: string[]) => string[];
 }

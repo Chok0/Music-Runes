@@ -101,6 +101,10 @@ export function createCardElement(card: Card, opts: CardViewOptions = {}): HTMLE
   svg.appendChild(glyph);
 
   rootEl.appendChild(svg);
+  // Valeur commerciale (1-3) : points de set au drop — pas d'effet étoiles.
+  const value = el('div', 'card__value', String(card.value));
+  value.title = `Valeur : ${card.value} pt${card.value > 1 ? 's' : ''} au drop`;
+  rootEl.appendChild(value);
   rootEl.appendChild(el('div', 'card__name', card.name));
   rootEl.appendChild(el('div', 'card__tags', `${card.genre} · ${card.energy}`));
   if (opts.stemDescription) {

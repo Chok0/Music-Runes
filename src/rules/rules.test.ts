@@ -53,6 +53,7 @@ function fakeCard(id: string, genre: Genre, energy: Energy): Card {
     name: id,
     genre,
     energy,
+    value: 1, // la valeur n'entre pas dans evaluateBoard (cash, pas étoiles)
     rarity: 'commune',
     slots: { rythme: variant, basse: variant, harmonie: variant, lead: variant },
   };

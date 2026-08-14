@@ -81,7 +81,7 @@ npm test        # tests unitaires (règles de scoring, machine à états)
 npm run build   # typecheck strict + bundle de production dans dist/
 ```
 
-La partie suit la tournée de `data/scenes.json` (4 scènes, du tutoriel au festival) ; la progression est sauvegardée en localStorage — « Recommencer à zéro » sur l'écran-titre pour repartir de rien. Les stems placeholder (48 boucles WAV synthétisées, La mineur, tempo de `data/audio.json`) et le SFX d'applaudissements sont régénérables avec `npm run stems`.
+La partie suit la tournée de `data/scenes.json` (5 scènes, du tutoriel au festival) ; la progression est sauvegardée en localStorage — « Recommencer à zéro » sur l'écran-titre pour repartir de rien. Les stems placeholder (56 boucles WAV chiptune synthétisées sur la progression Am→F→C→G, 4 mesures, tempo de `data/audio.json`) et le SFX d'applaudissements sont régénérables avec `npm run stems`.
 
 Pour comprendre le code avant de contribuer : la [roadmap MVP](docs/roadmap-mvp.md) et l'[architecture technique](docs/architecture-technique.md).
 

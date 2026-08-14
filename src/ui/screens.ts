@@ -118,6 +118,9 @@ export function renderScoredModal(
   // La décomposition (paires, conditions, totaux) est rendue par
   // renderBreakdownLines, partagée avec le panneau « Score en direct ».
   modal.appendChild(renderBreakdownLines(result.breakdown, data));
+  modal.appendChild(
+    el('div', 'modal__discs', `💿 Valeur des disques posés : +${result.discPoints} pts au set`),
+  );
   modal.appendChild(el('p', 'modal__note', 'Le mix continue de tourner, en retrait, pendant que tu lis ton score.'));
 
   const next = button('btn btn--primary modal__next', isLast ? 'Finir la scène ▶' : 'Requête suivante ▶', onNext);
@@ -150,7 +153,7 @@ export function renderCelebration(args: {
     const li = el('li', 'ended-box__row');
     li.appendChild(el('span', 'ended-box__request', `${i + 1}. ${recipe?.name ?? r.recipeId}`));
     li.appendChild(el('span', 'ended-box__stars', starsText(r.stars)));
-    li.appendChild(el('span', 'ended-box__points', `${r.breakdown.total} pts`));
+    li.appendChild(el('span', 'ended-box__points', `${r.breakdown.total + r.discPoints} pts`));
     list.appendChild(li);
   });
   box.appendChild(list);
@@ -203,6 +206,26 @@ export function renderShop(args: {
   box.appendChild(grid);
   box.appendChild(el('p', 'shop-box__hint', 'Choisis bien : le disquaire ne vend qu’un disque par visite.'));
 
+  screen.appendChild(box);
+  return screen;
+}
+
+/** Jauge d'attention vide : le public s'en va, le concert est raté. */
+export function renderFailedScreen(scene: Scene, onRetry: () => void): HTMLElement {
+  const screen = el('div', 'screen screen--ended screen--failed');
+  const box = el('div', 'ended-box');
+  box.appendChild(el('p', 'ended-box__kicker ended-box__kicker--failed', '🚪 Le public s’en va…'));
+  box.appendChild(el('h1', 'ended-box__title', `${scene.name} — concert raté`));
+  box.appendChild(
+    el(
+      'p',
+      'ended-box__epilogue',
+      'La jauge d’attention est tombée à zéro : la salle s’est vidée. Pas de cachet, pas de disque — mais la tournée continue : ce concert peut être rejoué.',
+    ),
+  );
+  const retry = button('btn btn--primary', '↻ Rejouer la scène', onRetry);
+  retry.dataset['key'] = 'retry';
+  box.appendChild(retry);
   screen.appendChild(box);
   return screen;
 }
