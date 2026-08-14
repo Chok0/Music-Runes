@@ -1,0 +1,136 @@
+# Audit game design — « c'est rigolo mais il ne se passe pas grand chose »
+
+*Commandé après le playtest #3 (2026-08-14). Grilles utilisées : décisions
+intéressantes (Meier), MDA/8 plaisirs (LeBlanc), flow (Csikszentmihalyi),
+fun = apprentissage (Koster), incertitude (Costikyan), théorie de la décision.*
+
+## 0. Le verdict en une phrase
+
+Music Runes est aujourd'hui un **jouet** (au sens noble : un mixeur sonore
+délicieux à manipuler) surmonté d'un **habillage de jeu** (scores, étoiles,
+scènes) — mais il ne contient pas encore de **jeu** : aucune décision n'a de
+coût, aucun échec n'est possible, aucune horloge ne presse. C'est exactement
+le syndrome DropMix : le jouet est si bon qu'on croit longtemps que le jeu
+est là.
+
+## 1. Diagnostic — pourquoi « il ne se passe rien » (théorie de la décision)
+
+Une décision est intéressante quand elle combine : des options aux valeurs
+**différentes**, une **incertitude** partiellement lisible, un **coût
+d'opportunité** (choisir A ferme B), une **irréversibilité** qui engage, et
+une **pression** (temps, ressource, adversaire). État des lieux :
+
+### 1.1 Recherche gratuite : le puzzle est énumérable
+La pose est infiniment réversible avant le drop, rien n'est dépensé, et
+l'interface calcule désormais les deltas à la place du joueur. Avec 4-6
+cartes en main et 4 slots, l'espace des choix s'énumère en quelques secondes.
+Formellement : problème d'optimisation mono-agent, information parfaite,
+recherche à coût nul → la stratégie dominante se trouve trivialement.
+**Ce n'est pas une partie, c'est un tri.**
+
+### 1.2 Rien ne peut être perdu
+Pas de ressource consommée (les cartes reviennent en main), cachet garanti,
+score plancher à 0, aucun seuil d'échec : toutes les branches mènent à
+« gagné ». La tension est l'écart ressenti entre le résultat espéré et sa
+probabilité — sans possibilité de perte, cet écart est nul par construction.
+Les étoiles n'ont **aucune conséquence** (ni porte, ni récompense modulée) :
+elles notent, elles n'enjeux pas.
+
+### 1.3 L'incertitude ne mord pas
+La pioche est aléatoire mais la main contient presque tout le deck (petite
+collection) ; la séquence de recettes est fixe ; les valeurs sont affichées.
+Costikyan : un jeu vit de son incertitude — ici, passé le tutoriel, il n'en
+reste aucune. Nuance importante : le travail de lisibilité (pictos, liens)
+n'était PAS une erreur — la tension sans lisibilité produit de la
+frustration, pas du challenge. Mais la lisibilité doit porter sur les
+**règles**, pendant que l'incertitude doit venir des **tirages, de l'avenir,
+de l'horloge** — pas de règles opaques.
+
+### 1.4 Une seule décision par « moment de jeu »
+Chaque requête = un unique point de décision statique, puis un drop. Entre
+deux drops : rien n'évolue, rien ne menace, rien n'expire. « Il ne se passe
+pas grand chose » est littéralement exact : la densité décisionnelle est de
+~1 décision/2 minutes, sans conséquence inter-requêtes (remplacement libre
+→ chaque requête repart de zéro stratégiquement, même si le plateau persiste
+physiquement).
+
+### 1.5 La musique n'a aucun rôle mécanique
+Le constat le plus profond : **on peut jouer en muet sans rien perdre.** Le
+mix audible est la récompense sensorielle (voulu, GDD §5) mais n'entre dans
+aucune boucle de décision — ni pression, ni information, ni bonus. C'était
+aussi vrai de DropMix solo ; DropMix ne devenait un jeu qu'en versus (lutte
+pour les platines, niveaux de cartes, économie de tours) et en mode party
+chronométré. Nous n'avons ni l'un ni l'autre.
+
+## 2. Lecture par les grilles du fun
+
+- **MDA / 8 plaisirs** : servis = Sensation (le mix), Fantasy (le robot),
+  Découverte (première heure). Absents = **Challenge** (pas d'échec),
+  **Submission/flow** (pas de courbe), Expression (deck trop petit pour des
+  « builds »), Fellowship (solo). Caillois : on est en *paidia* (jeu libre)
+  décoré de *ludus* (règles) — le ludus ne contraint rien.
+- **Flow** : après 10 minutes, défi ≪ compétence → ennui mécanique. Aucun
+  levier ne remonte le défi (les recettes « contradictoires » se résolvent
+  aussi par énumération).
+- **Koster** : le fun est l'apprentissage de motifs ; l'espace de motifs
+  (14 cartes, 2 axes, bonus de paires) s'épuise en une session. Le plafond
+  de maîtrise est atteint immédiatement → le cerveau classe le jeu « fini ».
+
+## 3. Les leviers de tension, classés
+
+Par rapport coût/effet, sachant que le GDD contient déjà ses propres remèdes
+(c'est une force : rien ici ne trahit le design d'origine).
+
+### Levier 1 — Remplacement limité + requête suivante visible (GDD §11)
+Le GDD posait la question « remplacement libre vs limité (max 2 slots) » ;
+les playtests ont utilisé « libre » (le plus simple à coder). **C'est le
+levier le plus systémique.** Limiter à 2 remplacements par requête crée d'un
+coup : coût d'opportunité (lesquels ?), engagement (les 2 autres slots
+pèsent sur la requête suivante), et — si on affiche la **prochaine requête**
+(le « next piece » de Tetris) — un vrai jeu d'anticipation séquentiel où les
+cartes polyvalentes acquièrent une valeur d'option. Transforme N requêtes
+isolées en une partie continue.
+
+### Levier 2 — Étoiles à conséquence (échec possible)
+Cachet multiplié par les étoiles ; 0★ = concert raté, à rejouer. La boutique
+devient un budget de performance (mal jouer = ne pas pouvoir s'offrir le
+disque convoité). Coût d'implémentation minimal, transforme la nature de
+chaque drop.
+
+### Levier 3 — L'horloge musicale (GDD §4, axe 3 « timing »)
+Chaque requête se joue en un temps musical borné (ex. 8 mesures), auto-drop
+à l'échéance ; bonus si les poses tombent en rythme. C'est LE levier qui
+donne enfin un rôle mécanique à la musique : elle devient le chronomètre
+qu'on entend monter. À calibrer doucement (mode « zen » sans horloge en
+option d'accessibilité).
+
+### Levier 4 — Main en lots de 4 non rechargeable (proposition playtest #2)
+Pioche de 4 exactement par requête, pas de rappel : la main devient une
+ressource, pas un menu. Combiné au levier 1, fait émerger la gestion de
+rareté inter-requêtes (garder sa Techno Calme pour « Le Rappel » ?).
+
+### Levier 5 — Scoring en mains de poker (proposition playtest #2)
+Paire/brelan/carré/couleur/suite sur les axes forme/couleur : rend les
+objectifs nommables et les succès partiels lisibles. Important : sans les
+leviers 1-4, le poker reste de la lisibilité ; **avec** eux, il devient du
+gambling (courir le carré = un pari, car la pioche est finie et l'horloge
+tourne). À faire après ou avec, pas avant.
+
+### Levier 6 — Perturbations et rival (plus tard)
+Le public qui change d'avis en cours de requête (idée playtest #1), un DJ
+rival qui pose sur les mêmes platines. Ne poser ce levier qu'une fois la
+tension de base installée — sinon c'est du bruit sur un système sans enjeu.
+
+## 4. Ordonnance — jalon M6 « la tension »
+
+1. **Remplacement limité à 2** par requête (paramètre dans scoring/config,
+   A/B contre libre) + **affichage de la prochaine requête**.
+2. **Étoiles à conséquence** : cachet × étoiles, 0★ = scène à rejouer.
+3. **Horloge musicale** : 8 mesures par requête, auto-drop, bonus de pose en
+   rythme (l'axe 3 du GDD §4 enfin réel) ; option zen.
+4. Ensuite seulement : **poker hands** (relecture du scoring), puis **deck
+   élargi tiré par 4**.
+
+Critère de réussite du jalon, à vérifier en playtest #4 : le joueur doit
+pouvoir dire « j'ai raté et je sais pourquoi » et « j'ai eu chaud » — les
+deux phrases qui manquent aujourd'hui.
