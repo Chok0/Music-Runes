@@ -1,0 +1,305 @@
+{
+  "schema_version": 1,
+  "cards": [
+    {
+      "id": "loup-statique",
+      "name": "Loup Statique",
+      "genre": "Techno",
+      "energy": "Intense",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Four-on-the-floor lourd",
+          "stem": "assets/stems/loup-statique/rythme.ogg"
+        },
+        "basse": {
+          "description": "Sub acide, punchy",
+          "stem": "assets/stems/loup-statique/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Nappe sombre saturée",
+          "stem": "assets/stems/loup-statique/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Vocal chop robotique",
+          "stem": "assets/stems/loup-statique/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "echo-bleute",
+      "name": "Écho Bleuté",
+      "genre": "Techno",
+      "energy": "Calme",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Groove minimal, hi-hats légers",
+          "stem": "assets/stems/echo-bleute/rythme.ogg"
+        },
+        "basse": {
+          "description": "Sub feutré, arrondi",
+          "stem": "assets/stems/echo-bleute/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Pad éthéré",
+          "stem": "assets/stems/echo-bleute/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Synth-lead planant",
+          "stem": "assets/stems/echo-bleute/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "enclume-rouge",
+      "name": "Enclume Rouge",
+      "genre": "Metal",
+      "energy": "Intense",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Double pédale rapide",
+          "stem": "assets/stems/enclume-rouge/rythme.ogg"
+        },
+        "basse": {
+          "description": "Distordue, palm-mute",
+          "stem": "assets/stems/enclume-rouge/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Power chords saturés",
+          "stem": "assets/stems/enclume-rouge/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Cri/riff aigu",
+          "stem": "assets/stems/enclume-rouge/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "cendre-grise",
+      "name": "Cendre Grise",
+      "genre": "Metal",
+      "energy": "Neutre",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Rock beat classique",
+          "stem": "assets/stems/cendre-grise/rythme.ogg"
+        },
+        "basse": {
+          "description": "Groove mid-tempo",
+          "stem": "assets/stems/cendre-grise/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Accords ouverts",
+          "stem": "assets/stems/cendre-grise/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Riff mélodique",
+          "stem": "assets/stems/cendre-grise/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "neon-carre",
+      "name": "Néon Carré",
+      "genre": "Pop",
+      "energy": "Intense",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Beat radio énergique",
+          "stem": "assets/stems/neon-carre/rythme.ogg"
+        },
+        "basse": {
+          "description": "Synth-bass punchy",
+          "stem": "assets/stems/neon-carre/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Accords brillants",
+          "stem": "assets/stems/neon-carre/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Voix lead accrocheuse",
+          "stem": "assets/stems/neon-carre/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "ruban-doux",
+      "name": "Ruban Doux",
+      "genre": "Pop",
+      "energy": "Calme",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Beat léger, brushes",
+          "stem": "assets/stems/ruban-doux/rythme.ogg"
+        },
+        "basse": {
+          "description": "Bass ronde legato",
+          "stem": "assets/stems/ruban-doux/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Accords simples piano",
+          "stem": "assets/stems/ruban-doux/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Voix chantée douce",
+          "stem": "assets/stems/ruban-doux/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "velours-triangle",
+      "name": "Velours Triangle",
+      "genre": "Jazz",
+      "energy": "Neutre",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Swing brushes",
+          "stem": "assets/stems/velours-triangle/rythme.ogg"
+        },
+        "basse": {
+          "description": "Walking bass",
+          "stem": "assets/stems/velours-triangle/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Accords 7e/9e",
+          "stem": "assets/stems/velours-triangle/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Sax lead improvisé",
+          "stem": "assets/stems/velours-triangle/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "cuivre-calme",
+      "name": "Cuivre Calme",
+      "genre": "Jazz",
+      "energy": "Calme",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Balai lent",
+          "stem": "assets/stems/cuivre-calme/rythme.ogg"
+        },
+        "basse": {
+          "description": "Contrebasse feutrée",
+          "stem": "assets/stems/cuivre-calme/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Piano rhodes",
+          "stem": "assets/stems/cuivre-calme/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Trompette sourdine",
+          "stem": "assets/stems/cuivre-calme/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "brume-hexagone",
+      "name": "Brume Hexagone",
+      "genre": "Ambient",
+      "energy": "Calme",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Percussion éparse",
+          "stem": "assets/stems/brume-hexagone/rythme.ogg"
+        },
+        "basse": {
+          "description": "Drone grave",
+          "stem": "assets/stems/brume-hexagone/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Textures évolutives",
+          "stem": "assets/stems/brume-hexagone/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Voix éthérée sans paroles",
+          "stem": "assets/stems/brume-hexagone/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "poussiere-d-etoile",
+      "name": "Poussière d'Étoile",
+      "genre": "Ambient",
+      "energy": "Neutre",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Rythme organique épars",
+          "stem": "assets/stems/poussiere-d-etoile/rythme.ogg"
+        },
+        "basse": {
+          "description": "Sub doux évolutif",
+          "stem": "assets/stems/poussiere-d-etoile/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Nappes granulaires",
+          "stem": "assets/stems/poussiere-d-etoile/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Field recording traité",
+          "stem": "assets/stems/poussiere-d-etoile/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "marteau-carre",
+      "name": "Marteau Carré",
+      "genre": "Pop",
+      "energy": "Neutre",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Beat pop classique",
+          "stem": "assets/stems/marteau-carre/rythme.ogg"
+        },
+        "basse": {
+          "description": "Bass groovy",
+          "stem": "assets/stems/marteau-carre/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Accords majeurs",
+          "stem": "assets/stems/marteau-carre/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Voix lead énergique",
+          "stem": "assets/stems/marteau-carre/lead.ogg"
+        }
+      }
+    },
+    {
+      "id": "lame-cercle",
+      "name": "Lame Cercle",
+      "genre": "Techno",
+      "energy": "Neutre",
+      "rarity": "commune",
+      "slots": {
+        "rythme": {
+          "description": "Beat techno standard",
+          "stem": "assets/stems/lame-cercle/rythme.ogg"
+        },
+        "basse": {
+          "description": "Sub carré",
+          "stem": "assets/stems/lame-cercle/basse.ogg"
+        },
+        "harmonie": {
+          "description": "Arpège synthé",
+          "stem": "assets/stems/lame-cercle/harmonie.ogg"
+        },
+        "lead": {
+          "description": "Lead acide",
+          "stem": "assets/stems/lame-cercle/lead.ogg"
+        }
+      }
+    }
+  ]
+}

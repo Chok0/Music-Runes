@@ -104,7 +104,7 @@ Un score total combine les trois, affiché en fin de round avec un feedback clai
 
 ## 5. Rendre la sélection de carte "puzzle" pour un non-mélomane
 
-Le risque : si le joueur doit "entendre" que deux cartes sont harmoniquement compatibles, on exclut tous ceux qui n'ont pas d'oreille musicale. Il faut donc **traduire l'info musicale en信息 visuelle/symbolique lisible sans écouter**.
+Le risque : si le joueur doit "entendre" que deux cartes sont harmoniquement compatibles, on exclut tous ceux qui n'ont pas d'oreille musicale. Il faut donc **traduire l'info musicale en information visuelle/symbolique lisible sans écouter**.
 
 Pistes concrètes :
 
@@ -169,20 +169,20 @@ Cette tension peut alimenter à la fois le **scoring** et le **puzzling** (la r�
 
 Chaque carte est jouable sur n'importe quel des 4 slots ; ses tags Genre/Énergie ne changent pas selon le slot, seule l'interprétation audio change (cf. section 3bis).
 
-| # | Nom (glyphe) | Genre | Énergie | Bassse | Batterie | Harmonie | Lead |
+| # | Nom (glyphe) | Genre | Énergie | Rythme | Basse | Harmonie | Lead |
 |---|---|---|---|---|---|---|---|
-| 1 | Loup Statique | Techno | Intense | Sub acide, punchy | Four-on-the-floor lourd | Nappe sombre saturée | Vocal chop robotique |
-| 2 | Écho Bleuté | Techno | Calme | Sub feutré, arrondi | Groove minimal, hi-hats légers | Pad éthéré | Synth-lead planant |
-| 3 | Enclume Rouge | Metal | Intense | Distordue, palm-mute | Double pédale rapide | Power chords saturés | Cri/riff aigu |
-| 4 | Cendre Grise | Metal | Neutre | Groove mid-tempo | Rock beat classique | Accords ouverts | Riff mélodique |
-| 5 | Néon Carré | Pop | Intense | Synth-bass punchy | Beat radio énergique | Accords brillants | Voix lead accrocheuse |
-| 6 | Ruban Doux | Pop | Calme | Bass ronde legato | Beat léger, brushes | Accords simples piano | Voix chantée douce |
-| 7 | Velours Triangle | Jazz | Neutre | Walking bass | Swing brushes | Accords 7e/9e | Sax lead improvisé |
-| 8 | Cuivre Calme | Jazz | Calme | Contrebasse feutrée | Balai lent | Piano rhodes | Trompette sourdine |
-| 9 | Brume Hexagone | Ambient | Calme | Drone grave | Percussion éparse | Textures évolutives | Voix éthérée sans paroles |
-| 10 | Poussière d'Étoile | Ambient | Neutre | Sub doux évolutif | Rythme organique épars | Nappes granulaires | Field recording traité |
-| 11 | Marteau Carré | Pop | Neutre | Bass groovy | Beat pop classique | Accords majeurs | Voix lead énergique |
-| 12 | Lame Cercle | Techno | Neutre | Sub carré | Beat techno standard | Arpège synthé | Lead acide |
+| 1 | Loup Statique | Techno | Intense | Four-on-the-floor lourd | Sub acide, punchy | Nappe sombre saturée | Vocal chop robotique |
+| 2 | Écho Bleuté | Techno | Calme | Groove minimal, hi-hats légers | Sub feutré, arrondi | Pad éthéré | Synth-lead planant |
+| 3 | Enclume Rouge | Metal | Intense | Double pédale rapide | Distordue, palm-mute | Power chords saturés | Cri/riff aigu |
+| 4 | Cendre Grise | Metal | Neutre | Rock beat classique | Groove mid-tempo | Accords ouverts | Riff mélodique |
+| 5 | Néon Carré | Pop | Intense | Beat radio énergique | Synth-bass punchy | Accords brillants | Voix lead accrocheuse |
+| 6 | Ruban Doux | Pop | Calme | Beat léger, brushes | Bass ronde legato | Accords simples piano | Voix chantée douce |
+| 7 | Velours Triangle | Jazz | Neutre | Swing brushes | Walking bass | Accords 7e/9e | Sax lead improvisé |
+| 8 | Cuivre Calme | Jazz | Calme | Balai lent | Contrebasse feutrée | Piano rhodes | Trompette sourdine |
+| 9 | Brume Hexagone | Ambient | Calme | Percussion éparse | Drone grave | Textures évolutives | Voix éthérée sans paroles |
+| 10 | Poussière d'Étoile | Ambient | Neutre | Rythme organique épars | Sub doux évolutif | Nappes granulaires | Field recording traité |
+| 11 | Marteau Carré | Pop | Neutre | Beat pop classique | Bass groovy | Accords majeurs | Voix lead énergique |
+| 12 | Lame Cercle | Techno | Neutre | Beat techno standard | Sub carré | Arpège synthé | Lead acide |
 
 *(Rareté : toutes communes pour le MVP — la rareté et les combos narratifs écrits à la main viendront après validation du noyau système, cf. section 8.)*
 
@@ -220,6 +220,7 @@ Ce fonctionnement répond directement au point ouvert sur la mécanique de rempl
 
 ## Points encore ouverts à trancher
 - Choisir entre les 3 propositions de scoring (section 4) après premiers tests in-game — ou en garder deux en A/B test
+- **Incohérence interne à résoudre** : le bonus de contraste (section 3, Option A ✅ — « 1 carte énergie haute + 1 carte énergie basse ») est repris par le score de cohérence (section 4, axe 1) et testé par la recette 5 « Contraste assumé », mais aucune des 3 propositions de scoring ne le chiffre — intégrer un terme de contraste à la formule retenue (valeur à régler en playtest)
 - Remplacement libre vs limité par requête (section 11) — à trancher en playtest
 - Ton exact de l'humour du robot musicien, et comment les requêtes/dialogues sont écrits et affichés à l'écran
 - Nombre de requêtes par "set" (5 ? 8 ?) et taille de la main/du deck de départ pour le MVP

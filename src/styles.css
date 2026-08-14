@@ -1,0 +1,936 @@
+/* ==========================================================================
+   Music Runes — style sombre « scène de concert » (mobile-first).
+   Palette énergie (modele-de-donnees §1) :
+   Calme #4d7fd6 · Neutre #8a8f98 · Intense fond #1b1b1f + accents #d63b3b.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+  --bg: #14141c;
+  --panel: #1c1c26;
+  --panel-2: #22222e;
+  --line: #2e2e3c;
+  --text: #ececf2;
+  --text-dim: #a2a7b4;
+  --accent: #e5a53a; /* projecteur ambré : actions principales */
+  --good: #3fbf6f;
+  --bad: #e05252;
+  --dare: #e0a63c;
+  --calme: #4d7fd6;
+  --neutre: #8a8f98;
+  --intense-bg: #1b1b1f;
+  --intense-accent: #d63b3b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  background-image: radial-gradient(ellipse 80% 50% at 50% -10%, #232338 0%, transparent 70%);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  min-height: 100dvh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* --------------------------------------------------------------------------
+   Boutons
+   -------------------------------------------------------------------------- */
+.btn {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #1a1408;
+  font-weight: 700;
+  box-shadow: 0 4px 18px -6px rgba(229, 165, 58, 0.55);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #f0b34a;
+}
+
+.btn:focus-visible,
+.card:focus-visible,
+.slot:focus-visible,
+.score-panel__summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   Écrans plein cadre (titre, fin de set)
+   -------------------------------------------------------------------------- */
+.screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen--title,
+.screen--ended {
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  text-align: center;
+}
+
+.title-box,
+.ended-box {
+  max-width: 30rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.title-box__name {
+  margin: 0;
+  font-size: clamp(2.4rem, 8vw, 3.6rem);
+  letter-spacing: 0.06em;
+  background: linear-gradient(120deg, #f2e2b8, var(--accent) 45%, #d66a3b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.title-box__subtitle {
+  margin: -0.75rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.title-box__pitch {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 1.05rem;
+}
+
+.title-box__start {
+  font-size: 1.15rem;
+  padding: 0.8rem 1.8rem;
+}
+
+.title-box__hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+/* --------------------------------------------------------------------------
+   HUD
+   -------------------------------------------------------------------------- */
+.hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(20, 20, 28, 0.9);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(6px);
+}
+
+.hud__request-index {
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hud__recipe {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.hud__recipe-name {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.hud__recipe-difficulty {
+  color: var(--dare);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.hud__flavor {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.hud__conditions {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.hud__condition {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  transition:
+    border-color 150ms ease,
+    color 150ms ease,
+    background 150ms ease;
+}
+
+.hud__condition.is-met {
+  color: var(--good);
+  border-color: rgba(63, 191, 111, 0.6);
+  background: rgba(63, 191, 111, 0.1);
+}
+
+.hud__condition-state {
+  font-weight: 700;
+}
+
+.hud__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hud__set-score {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__mute {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 0.35rem 0.6rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.hud__mute:hover:not(:disabled) {
+  background: var(--panel-2);
+}
+
+.hud__mute:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hud__audio-warn {
+  flex-basis: 100%;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+/* --------------------------------------------------------------------------
+   Zone centrale : plateau + panneau score
+   -------------------------------------------------------------------------- */
+.game-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* --------------------------------------------------------------------------
+   Plateau — 4 slots
+   -------------------------------------------------------------------------- */
+.board {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, var(--panel) 0%, #191922 100%);
+  transition: box-shadow 150ms ease, border-color 150ms ease;
+  align-content: start;
+}
+
+/* Cohérence haute : liseré harmonieux, sobre (GDD §5). */
+.board--harmonious {
+  border-color: rgba(63, 191, 111, 0.55);
+  box-shadow:
+    inset 0 0 0 1px rgba(63, 191, 111, 0.25),
+    0 0 28px -10px rgba(63, 191, 111, 0.45);
+}
+
+/* Cohérence négative : léger tremblement, amplitude pilotée par --shake-amp. */
+.board--dissonant {
+  border-color: rgba(224, 82, 82, 0.4);
+  animation: board-shake 0.45s linear infinite;
+}
+
+@keyframes board-shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  20% {
+    transform: translate(calc(var(--shake-amp, 1px) * -1), 0);
+  }
+  40% {
+    transform: translate(var(--shake-amp, 1px), calc(var(--shake-amp, 1px) * 0.3));
+  }
+  60% {
+    transform: translate(calc(var(--shake-amp, 1px) * -0.6), 0);
+  }
+  80% {
+    transform: translate(calc(var(--shake-amp, 1px) * 0.6), calc(var(--shake-amp, 1px) * -0.3));
+  }
+}
+
+.slot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 11.5rem;
+  padding: 0.6rem 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: border-color 150ms ease, background 150ms ease;
+}
+
+.slot--empty {
+  border-style: dashed;
+  border-color: #3a3a4c;
+  justify-content: flex-start;
+}
+
+.slot--target {
+  border-color: var(--accent);
+  background: rgba(229, 165, 58, 0.07);
+}
+
+.slot__label {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.slot__placeholder {
+  margin: auto;
+  color: #4a4a5e;
+  font-size: 0.85rem;
+}
+
+.slot__remove {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.slot__remove:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+/* Badge de delta hypothétique pendant drag/sélection. */
+.slot__delta {
+  position: absolute;
+  bottom: 0.4rem;
+  right: 0.4rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+}
+
+.slot__delta.is-positive {
+  color: #0d2417;
+  background: var(--good);
+  border-color: transparent;
+}
+
+.slot__delta.is-negative {
+  color: #fff;
+  background: var(--bad);
+  border-color: transparent;
+}
+
+.slot__delta.is-zero {
+  color: var(--text-dim);
+}
+
+/* --------------------------------------------------------------------------
+   Cartes — forme = Genre, couleur = Énergie, glyphe = identité
+   -------------------------------------------------------------------------- */
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  width: 7.25rem;
+  padding: 0.5rem 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #1e1e29;
+  box-shadow: 0 6px 16px -8px rgba(0, 0, 0, 0.7);
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px -8px rgba(0, 0, 0, 0.8);
+}
+
+.card--selected {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent),
+    0 10px 22px -8px rgba(0, 0, 0, 0.8);
+  transform: translateY(-4px);
+}
+
+.card--drag-source {
+  opacity: 0.35;
+}
+
+.card--ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  width: 7.25rem;
+  transform: translate(-50%, -65%) scale(1.06) rotate(-2deg);
+  pointer-events: none;
+  opacity: 0.92;
+  box-shadow: 0 18px 36px -10px rgba(0, 0, 0, 0.9);
+  transition: none;
+}
+
+/* Drag : le navigateur ne doit pas voler le geste (Pointer Events). */
+.slot .card {
+  touch-action: none;
+}
+
+/* Dans la main, laisser le pan horizontal au scroll, le drag est vertical. */
+.hand .card {
+  touch-action: pan-x;
+  flex: 0 0 auto;
+}
+
+.card__svg {
+  width: 4.6rem;
+  height: 4.6rem;
+  display: block;
+}
+
+.card__shape {
+  transition: fill 150ms ease, stroke 150ms ease;
+}
+
+/* Énergie = couleur (Calme bleu, Neutre gris, Intense noir/rouge). */
+.card[data-energy='Calme'] .card__shape {
+  fill: var(--calme);
+  stroke: #7fa5e8;
+  stroke-width: 2;
+}
+
+.card[data-energy='Neutre'] .card__shape {
+  fill: var(--neutre);
+  stroke: #b0b5be;
+  stroke-width: 2;
+}
+
+.card[data-energy='Intense'] .card__shape {
+  fill: var(--intense-bg);
+  stroke: var(--intense-accent);
+  stroke-width: 3;
+}
+
+.card[data-energy='Intense'] .card__svg {
+  filter: drop-shadow(0 0 6px rgba(214, 59, 59, 0.55));
+}
+
+.card__glyph {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  fill: #f4f6fb;
+}
+
+.card[data-energy='Neutre'] .card__glyph {
+  fill: #14141c;
+}
+
+.card[data-energy='Intense'] .card__glyph {
+  fill: #f3d9d9;
+}
+
+.card__name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+}
+
+/* La forme/couleur enseigne, le texte confirme (GDD §5). */
+.card__tags {
+  font-size: 0.68rem;
+  color: var(--text-dim);
+}
+
+.card__stem {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: center;
+  line-height: 1.25;
+  max-width: 100%;
+}
+
+/* Halos de feedback avant la pose (GDD §5/§7). */
+.card.halo--good {
+  border-color: var(--good);
+  box-shadow:
+    0 0 0 2px var(--good),
+    0 0 16px 2px rgba(63, 191, 111, 0.45);
+}
+
+.card.halo--bad {
+  border-color: var(--bad);
+  box-shadow:
+    0 0 0 2px var(--bad),
+    0 0 16px 2px rgba(224, 82, 82, 0.45);
+}
+
+/* Contradiction demandée par la recette : à tenter ! */
+.card.halo--dare {
+  border-color: var(--dare);
+  box-shadow:
+    0 0 0 2px var(--dare),
+    0 0 16px 2px rgba(224, 166, 60, 0.5);
+}
+
+/* --------------------------------------------------------------------------
+   Panneau score en direct
+   -------------------------------------------------------------------------- */
+.score-panel {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.score-panel__summary {
+  padding: 0.65rem 0.9rem;
+  cursor: pointer;
+  font-weight: 700;
+  list-style: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.score-panel__summary::before {
+  content: '▸ ';
+  color: var(--text-dim);
+}
+
+.score-panel[open] .score-panel__summary::before {
+  content: '▾ ';
+}
+
+.score-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.score-panel__hint {
+  margin: 0;
+  padding: 0 0.9rem 0.8rem;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.breakdown {
+  padding: 0 0.9rem 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.breakdown__heading {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.breakdown__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  padding: 0.12rem 0;
+}
+
+.breakdown__label {
+  min-width: 0;
+}
+
+.breakdown__points {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.breakdown__row--plus .breakdown__points {
+  color: var(--good);
+}
+
+.breakdown__row--minus .breakdown__points {
+  color: var(--bad);
+}
+
+.breakdown__row--dare .breakdown__points {
+  color: var(--dare);
+}
+
+.breakdown__row--muted {
+  color: var(--text-dim);
+}
+
+.breakdown__section--totals {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+
+.breakdown__row--total {
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+/* --------------------------------------------------------------------------
+   Pied de page : bouton drop + main
+   -------------------------------------------------------------------------- */
+.footer {
+  border-top: 1px solid var(--line);
+  background: rgba(20, 20, 28, 0.92);
+  padding: 0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  backdrop-filter: blur(6px);
+}
+
+.footer__drop-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.footer__hint {
+  color: var(--text-dim);
+  font-size: 0.82rem;
+}
+
+.hand {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding: 0.35rem 0.15rem 0.5rem;
+  border-radius: 12px;
+  transition: background 150ms ease, box-shadow 150ms ease;
+  scrollbar-width: thin;
+}
+
+.hand--drop-target {
+  background: rgba(229, 165, 58, 0.08);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.hand__empty {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  padding: 1rem;
+}
+
+/* --------------------------------------------------------------------------
+   Modal de score de requête
+   -------------------------------------------------------------------------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(8, 8, 12, 0.65);
+  backdrop-filter: blur(3px);
+}
+
+.modal {
+  width: min(30rem, 100%);
+  max-height: 88dvh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.9);
+}
+
+.modal__title {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.modal__stars {
+  font-size: 2rem;
+  color: var(--accent);
+  letter-spacing: 0.15em;
+}
+
+.modal__score {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.modal__note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+
+.modal__next {
+  align-self: flex-end;
+}
+
+.modal .breakdown {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.7rem 0.9rem;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* --------------------------------------------------------------------------
+   Fin de set
+   -------------------------------------------------------------------------- */
+.ended-box__title {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.ended-box__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.ended-box__row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  text-align: left;
+}
+
+.ended-box__request {
+  flex: 1;
+  min-width: 0;
+}
+
+.ended-box__stars {
+  color: var(--accent);
+  letter-spacing: 0.1em;
+}
+
+.ended-box__points {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ended-box__total {
+  font-size: 1.3rem;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   Erreur fatale (chargement des données)
+   -------------------------------------------------------------------------- */
+.fatal-error {
+  max-width: 36rem;
+  margin: 15dvh auto 0;
+  padding: 1.5rem;
+  border: 1px solid rgba(224, 82, 82, 0.5);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.fatal-error__title {
+  margin: 0 0 0.5rem;
+  font-size: 1.4rem;
+  color: var(--bad);
+}
+
+.fatal-error__kind {
+  margin: 0 0 0.75rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+.fatal-error__message {
+  margin: 0 0 1rem;
+  padding: 0.8rem;
+  background: #101018;
+  border-radius: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85rem;
+  color: #f3c8c8;
+}
+
+.fatal-error__hint {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+/* --------------------------------------------------------------------------
+   Desktop (≥ 900px) : plateau + panneau côte à côte, cartes plus grandes
+   -------------------------------------------------------------------------- */
+@media (min-width: 900px) {
+  .game-main {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .board {
+    flex: 1;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .score-panel {
+    width: 21rem;
+    flex: 0 0 auto;
+    position: sticky;
+    top: 0;
+  }
+
+  .card {
+    width: 8rem;
+  }
+
+  .card__svg {
+    width: 5.2rem;
+    height: 5.2rem;
+  }
+
+  .hand {
+    justify-content: center;
+  }
+}
+
+/* Accessibilité : pas d'animation pour qui n'en veut pas. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

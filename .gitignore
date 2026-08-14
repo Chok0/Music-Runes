@@ -1,0 +1,11 @@
+# Dépendances et build
+node_modules/
+dist/
+
+# Stems placeholder générés par `npm run stems` (pipeline reproductible,
+# cf. docs/roadmap-mvp.md M2 — on ne versionne pas les binaires générés)
+public/assets/stems/
+
+# Divers
+*.log
+.DS_Store

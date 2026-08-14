@@ -1,0 +1,25 @@
+{
+  "name": "music-runes",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Prototype MVP — deckbuilder musical (nom provisoire). Voir GDD-jeu-mix-cartes.md.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "predev": "node scripts/generate-stems.mjs",
+    "build": "tsc --noEmit && vite build",
+    "prebuild": "node scripts/generate-stems.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "stems": "node scripts/generate-stems.mjs --force"
+  },
+  "dependencies": {
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.61.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}

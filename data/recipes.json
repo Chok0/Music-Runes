@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "recipes": [
+    {
+      "id": "ouverture-club",
+      "name": "Ouverture club",
+      "difficulty": "Facile",
+      "flavor": "",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 2,
+          "filter": { "genre": ["Techno"] }
+        }
+      ]
+    },
+    {
+      "id": "session-lounge",
+      "name": "Session lounge",
+      "difficulty": "Facile",
+      "flavor": "",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 2,
+          "filter": { "genre": ["Ambient", "Jazz"] }
+        },
+        {
+          "type": "none",
+          "filter": { "energy": ["Intense"] }
+        }
+      ]
+    },
+    {
+      "id": "set-stade",
+      "name": "Set stade",
+      "difficulty": "Facile",
+      "flavor": "",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 2,
+          "filter": { "genre": ["Pop"], "energy": ["Intense"] }
+        }
+      ]
+    },
+    {
+      "id": "set-monochrome",
+      "name": "Set monochrome",
+      "difficulty": "Cohérence pure",
+      "flavor": "",
+      "conditions": [
+        {
+          "type": "all_same_genre"
+        }
+      ]
+    },
+    {
+      "id": "contraste-assume",
+      "name": "Contraste assumé",
+      "difficulty": "Teste le bonus de contraste",
+      "flavor": "",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 1,
+          "filter": { "energy": ["Calme"] }
+        },
+        {
+          "type": "min_count",
+          "count": 1,
+          "filter": { "energy": ["Intense"] }
+        }
+      ]
+    },
+    {
+      "id": "techno-romantique",
+      "name": "Techno Romantique",
+      "difficulty": "Contradictoire",
+      "flavor": "",
+      "note": "Le GDD (section 10) dit « au moins 1 carte Techno ET 1 carte Jazz ou Ambient Calme », phrase ambiguë. Interprétation retenue ici : 1 carte de genre (Jazz OU Ambient) ET d'énergie Calme — à confirmer avec l'auteur du GDD ; si la lecture voulue était « Jazz OU (Ambient Calme) », ajuster la seconde condition (cf. docs/modele-de-donnees.md, notes de fidélité).",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 1,
+          "filter": { "genre": ["Techno"] }
+        },
+        {
+          "type": "min_count",
+          "count": 1,
+          "filter": { "genre": ["Jazz", "Ambient"], "energy": ["Calme"] }
+        }
+      ]
+    },
+    {
+      "id": "metal-pour-bebe",
+      "name": "Metal pour bébé",
+      "difficulty": "Contradictoire, comique",
+      "flavor": "",
+      "conditions": [
+        {
+          "type": "min_count",
+          "count": 1,
+          "filter": { "genre": ["Metal"] }
+        },
+        {
+          "type": "none",
+          "filter": { "energy": ["Intense"] }
+        }
+      ]
+    },
+    {
+      "id": "improvisation-totale",
+      "name": "Improvisation totale",
+      "difficulty": "Diversité",
+      "flavor": "",
+      "conditions": [
+        {
+          "type": "all_different_genres"
+        }
+      ]
+    }
+  ]
+}
