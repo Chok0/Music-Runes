@@ -163,8 +163,8 @@ button {
   flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 1rem;
+  gap: 0.35rem 1rem;
+  padding: 0.5rem 0.75rem;
   background: rgba(20, 20, 28, 0.9);
   border-bottom: 1px solid var(--line);
   position: sticky;
@@ -188,7 +188,7 @@ button {
 }
 
 .hud__recipe-name {
-  font-size: 1.15rem;
+  font-size: 1rem;
   font-weight: 700;
 }
 
@@ -200,7 +200,7 @@ button {
 
 .hud__flavor {
   color: var(--text-dim);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-style: italic;
 }
 
@@ -217,11 +217,11 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.2rem 0.6rem;
+  padding: 0.15rem 0.5rem;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--panel);
-  font-size: 0.82rem;
+  font-size: 0.75rem;
   color: var(--text-dim);
   transition:
     border-color 150ms ease,
@@ -285,8 +285,8 @@ button {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  padding: 0.75rem;
+  gap: 0.5rem;
+  padding: 0.5rem;
   min-height: 0;
   overflow-y: auto;
 }
@@ -297,8 +297,8 @@ button {
 .board {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 0.75rem;
-  padding: 0.75rem;
+  gap: 0.5rem;
+  padding: 0.5rem;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: linear-gradient(180deg, var(--panel) 0%, #191922 100%);
@@ -344,9 +344,9 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.4rem;
-  min-height: 11.5rem;
-  padding: 0.6rem 0.6rem 0.8rem;
+  gap: 0.3rem;
+  min-height: 8.75rem;
+  padding: 0.45rem 0.45rem 0.55rem;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.02);
@@ -438,8 +438,8 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 0.15rem;
-  width: 7.25rem;
-  padding: 0.5rem 0.4rem 0.55rem;
+  width: 6rem;
+  padding: 0.4rem 0.3rem 0.45rem;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #1e1e29;
@@ -476,7 +476,7 @@ button {
   left: 0;
   top: 0;
   z-index: 1000;
-  width: 7.25rem;
+  width: 6rem;
   transform: translate(-50%, -65%) scale(1.06) rotate(-2deg);
   pointer-events: none;
   opacity: 0.92;
@@ -489,15 +489,16 @@ button {
   touch-action: none;
 }
 
-/* Dans la main, laisser le pan horizontal au scroll, le drag est vertical. */
+/* La main ne scrolle plus (grille enveloppante) : le navigateur ne doit pas
+   voler le geste de drag. */
 .hand .card {
-  touch-action: pan-x;
+  touch-action: none;
   flex: 0 0 auto;
 }
 
 .card__svg {
-  width: 4.6rem;
-  height: 4.6rem;
+  width: 3rem;
+  height: 3rem;
   display: block;
 }
 
@@ -544,7 +545,7 @@ button {
 }
 
 .card__name {
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-align: center;
   line-height: 1.2;
@@ -552,12 +553,12 @@ button {
 
 /* La forme/couleur enseigne, le texte confirme (GDD §5). */
 .card__tags {
-  font-size: 0.68rem;
+  font-size: 0.62rem;
   color: var(--text-dim);
 }
 
 .card__stem {
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: var(--text-dim);
   font-style: italic;
   text-align: center;
@@ -692,10 +693,10 @@ button {
 .footer {
   border-top: 1px solid var(--line);
   background: rgba(20, 20, 28, 0.92);
-  padding: 0.6rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom));
+  padding: 0.45rem 0.6rem calc(0.45rem + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
   position: sticky;
   bottom: 0;
   z-index: 10;
@@ -714,14 +715,16 @@ button {
   font-size: 0.82rem;
 }
 
+/* Grille enveloppante : toutes les cartes visibles, aucun scroll latéral
+   (retour playtest mobile : le scroll horizontal était une friction). */
 .hand {
   display: flex;
-  gap: 0.6rem;
-  overflow-x: auto;
-  padding: 0.35rem 0.15rem 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.15rem 0.4rem;
   border-radius: 12px;
   transition: background 150ms ease, box-shadow 150ms ease;
-  scrollbar-width: thin;
 }
 
 .hand--drop-target {
@@ -763,15 +766,36 @@ button {
   box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.9);
 }
 
+.modal__kicker {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--good);
+}
+
 .modal__title {
   margin: 0;
   font-size: 1.3rem;
 }
 
 .modal__stars {
-  font-size: 2rem;
+  font-size: 2.4rem;
   color: var(--accent);
   letter-spacing: 0.15em;
+  animation: stars-pop 450ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+@keyframes stars-pop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .modal__score {
@@ -904,6 +928,8 @@ button {
   .board {
     flex: 1;
     grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    padding: 0.75rem;
   }
 
   .score-panel {
@@ -911,6 +937,10 @@ button {
     flex: 0 0 auto;
     position: sticky;
     top: 0;
+  }
+
+  .slot {
+    min-height: 11.5rem;
   }
 
   .card {
@@ -922,8 +952,20 @@ button {
     height: 5.2rem;
   }
 
+  .card__name {
+    font-size: 0.85rem;
+  }
+
+  .card__tags {
+    font-size: 0.7rem;
+  }
+
+  .card__stem {
+    font-size: 0.68rem;
+  }
+
   .hand {
-    justify-content: center;
+    gap: 0.6rem;
   }
 }
 

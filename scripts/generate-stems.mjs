@@ -472,10 +472,12 @@ function harmonieTechno(buf, rng, E) {
       pad[i] += (OSC.saw(p1) + OSC.saw(p2)) * 0.125;
     }
   }
-  onePoleLPSweepInPlace(pad, (t) => 300 + 380 * E.bright * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.5 * t - Math.PI / 2)));
+  // Retour playtest : la version saturée (tanh × (2+drive)) était agressive —
+  // filtre plus sombre et drive réduit pour une nappe de fond, pas de premier plan.
+  onePoleLPSweepInPlace(pad, (t) => 240 + 260 * E.bright * (0.5 + 0.5 * Math.sin(2 * Math.PI * 0.5 * t - Math.PI / 2)));
   for (let i = 0; i < N; i++) {
     const t = i / SR;
-    pad[i] = Math.tanh(pad[i] * (2 + E.drive)) * (0.75 + 0.25 * Math.sin(Math.PI * t / LOOP) ** 2);
+    pad[i] = Math.tanh(pad[i] * (1.1 + 0.5 * E.drive)) * (0.75 + 0.25 * Math.sin(Math.PI * t / LOOP) ** 2);
   }
   mixInto(buf, 0, pad);
 }
@@ -489,7 +491,7 @@ function harmonieMetal(buf, rng, E) {
     const hit = chordHit(A5, {
       dur: muted ? 0.09 : 0.19, wave: 'saw', attack: 0.003, release: 0.04,
       gain: e % 4 === 0 ? 1 : 0.82, drive: 2.5 + 1.5 * E.drive,
-      cutoff: 900 + 1400 * E.bright, q: 0.8,
+      cutoff: 700 + 1100 * E.bright, q: 0.8,
     });
     mixInto(buf, e * 2 * STEP, hit);
   }
@@ -503,15 +505,17 @@ function harmoniePop(buf, rng, E) {
     [-12, -9, -5, -2], // Am7 (A3 C4 E4 G4)
     [-17, -12, -9],    // Am/E (E3 A3 C4)
   ];
+  // Retour playtest : les saws brillantes étaient criardes — triangle + partiels
+  // (plus proche d'un piano électrique), attaque adoucie, filtre plus bas.
   for (let h = 0; h < 4; h++) {
     const hit = chordHit(chords[h], {
-      dur: 0.6, wave: 'saw', attack: 0.005, release: 0.3, gain: 1,
-      strum: 0.009, cutoff: 900 + 1900 * E.bright, q: 0.9, detune: 0.004,
+      dur: 0.6, wave: 'tri', attack: 0.01, release: 0.3, gain: 1,
+      strum: 0.009, cutoff: 700 + 1100 * E.bright, q: 0.8, detune: 0.004, harmonics: [0.2],
     });
     mixInto(buf, h * BEAT * 2, hit); // un accord par blanche
     if (E.dens >= 1) {
       mixInto(buf, h * BEAT * 2 + BEAT * 1.5,
-        chordHit(chords[h], { dur: 0.1, wave: 'saw', attack: 0.004, release: 0.06, gain: 0.5, cutoff: 900 + 1900 * E.bright }));
+        chordHit(chords[h], { dur: 0.1, wave: 'tri', attack: 0.006, release: 0.06, gain: 0.5, cutoff: 700 + 1100 * E.bright, harmonics: [0.2] }));
     }
   }
 }
@@ -689,7 +693,10 @@ function generateStem(card, slot) {
     if (a > peak) peak = a;
   }
   if (peak < 1e-9) throw new Error(`stem silencieux : ${card.id}/${slot}`);
-  const scale = E.peak / peak;
+  // Retour playtest : l'harmonie prenait trop de place dans le mix — voie
+  // légèrement en retrait (~ -2 dB) par rapport aux trois autres.
+  const slotTrim = slot === 'harmonie' ? 0.78 : 1;
+  const scale = (E.peak * slotTrim) / peak;
   for (let i = 0; i < N; i++) buf[i] *= scale;
   const FADE = Math.round(0.003 * SR);
   for (let i = 0; i < FADE; i++) {

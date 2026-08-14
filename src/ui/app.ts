@@ -109,6 +109,9 @@ export function mountApp(root: HTMLElement): void {
   function syncAudio(state: GameState): void {
     if (ui.audioStatus !== 'ready') return;
     for (const slot of SLOT_IDS) audio.setSlot(slot, state.board[slot]);
+    // Écran de score : le mix continue mais en retrait — ponctuation sonore
+    // de la fin de requête (retour playtest : la fin passait inaperçue).
+    audio.setDucked(state.phase === 'scored');
     // Fin de set : coupure propre, le récap est silencieux.
     if (state.phase === 'ended') audio.dispose();
   }

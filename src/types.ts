@@ -245,5 +245,10 @@ export interface AudioEngine {
   stopPreview(): void;
   /** Coupe/rétablit tout l'audio sans perdre l'état des slots. */
   setMuted(muted: boolean): void;
+  /**
+   * Baisse (true) ou rétablit (false) le volume du mix en douceur — ponctuation
+   * sonore de l'écran de score : le mix continue, mais en retrait.
+   */
+  setDucked(ducked: boolean): void;
   dispose(): void;
 }

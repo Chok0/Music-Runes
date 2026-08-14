@@ -46,6 +46,7 @@ export function renderScoredModal(
   modal.setAttribute('aria-modal', 'true');
 
   const recipe = data.recipeById.get(result.recipeId);
+  modal.appendChild(el('p', 'modal__kicker', '✓ Requête terminée'));
   modal.appendChild(el('h2', 'modal__title', recipe ? `« ${recipe.name} »` : 'Requête'));
   modal.appendChild(el('div', 'modal__stars', starsText(result.stars)));
   modal.appendChild(
@@ -55,7 +56,7 @@ export function renderScoredModal(
   // La décomposition (paires, conditions, totaux) est rendue par
   // renderBreakdownLines, partagée avec le panneau « Score en direct ».
   modal.appendChild(renderBreakdownLines(result.breakdown, data));
-  modal.appendChild(el('p', 'modal__note', 'Le mix continue de tourner pendant que tu lis ton score.'));
+  modal.appendChild(el('p', 'modal__note', 'Le mix continue de tourner, en retrait, pendant que tu lis ton score.'));
 
   const next = button('btn btn--primary modal__next', isLast ? 'Voir le score du set ▶' : 'Requête suivante ▶', onNext);
   next.dataset['key'] = 'next';

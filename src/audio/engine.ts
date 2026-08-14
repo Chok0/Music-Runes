@@ -24,6 +24,9 @@ const RAMP_SECONDS = 0.01;
 /** Preview : volume modéré (elle se superpose au mix) et fades courts. */
 const PREVIEW_VOLUME_DB = -8;
 const PREVIEW_FADE_SECONDS = 0.02;
+/** Ducking de l'écran de score : mix en retrait, rampe douce. */
+const DUCK_GAIN = 0.3;
+const DUCK_RAMP_SECONDS = 0.35;
 
 interface Voice {
   player: Tone.Player;
@@ -36,8 +39,10 @@ function slotRecord<T>(value: T): Record<SlotId, T> {
 
 export function createAudioEngine(data: GameData, opts: AudioEngineOptions): AudioEngine {
   const transport = Tone.getTransport();
+  /** Gain de ducking (écran de score) : après le limiteur, avant la sortie. */
+  const duck = new Tone.Gain(1).toDestination();
   /** Filet anti-clipping du master (cf. VOICE_GAIN). */
-  const master = new Tone.Limiter(-1).toDestination();
+  const master = new Tone.Limiter(-1).connect(duck);
 
   /** Voies du mix, clé stemKey(cardId, slot). Absente = stem manquant. */
   const voices = new Map<string, Voice>();
@@ -207,6 +212,15 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       Tone.getDestination().mute = muted;
     },
 
+    setDucked(ducked: boolean): void {
+      if (disposed) return;
+      const g = duck.gain;
+      const now = Tone.now();
+      g.cancelScheduledValues(now);
+      g.setRampPoint(now);
+      g.linearRampToValueAtTime(ducked ? DUCK_GAIN : 1, now + DUCK_RAMP_SECONDS);
+    },
+
     dispose(): void {
       if (disposed) return;
       disposed = true;
@@ -226,6 +240,7 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       for (const buffer of buffers.values()) buffer.dispose();
       buffers.clear();
       master.dispose();
+      duck.dispose();
       // Le transport est un singleton global : on l'arrête, on ne le dispose pas.
     },
   };
