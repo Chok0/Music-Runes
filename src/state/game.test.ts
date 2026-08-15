@@ -359,6 +359,32 @@ describe('slots actifs (progressivité tutorielle) et deck restreint', () => {
     expect(game.getState().board.harmonie).toBe(cardIdAt(2));
   });
 
+  it('anti-soft-lock : la destruction est refusée si elle rendait la scène infinissable', () => {
+    // Tutoriel type : 4 disques possédés, une requête à venir exige les 4 slots.
+    const owned = data.cards.slice(0, 4).map((c) => c.id);
+    const { game } = newGame(
+      TEST_CONFIG,
+      [
+        { recipe: recipeAt(0), slots: ['rythme', 'basse'] },
+        { recipe: recipeAt(1), slots: [...SLOT_IDS] },
+      ],
+      owned,
+    );
+    game.startSet();
+    expect(game.destructionLocked()).toBe(true); // 4 disques pour 4 slots à venir
+    const [a, b, c] = [owned[0]!, owned[1]!, owned[2]!];
+    game.place(a, 'rythme');
+    const before = game.getState();
+    game.place(b, 'rythme'); // remplacement destructeur → refusé
+    expect(game.getState()).toEqual(before);
+    // Le déplacement et la pose sur slot vide restent permis.
+    game.place(a, 'basse');
+    expect(game.getState().board.basse).toBe(a);
+    game.place(c, 'rythme');
+    expect(game.getState().board.rythme).toBe(c);
+    expect(game.getState().destroyed).toEqual([]);
+  });
+
   it('deckIds restreint la pioche au deck du joueur', () => {
     const owned = data.cards.slice(0, 4).map((c) => c.id);
     const { game } = newGame(

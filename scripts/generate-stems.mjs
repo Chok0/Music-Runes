@@ -993,6 +993,49 @@ function generateApplause() {
   return out;
 }
 
+/**
+ * Stingers de pose (la boussole sonore, retour playtest #4) : le public réagit
+ * À CHAQUE pose — accord montant si la carte synergise, buzz descendant si
+ * elle frotte, gimmick chromatique pour une contradiction demandée.
+ */
+function generateStinger(kind) {
+  const rng = mulberry32(fnv1a(`sfx/pose-${kind}`));
+  const dur = 0.5;
+  const n = Math.round(dur * SR);
+  const out = new Float64Array(n);
+  const put = (t0, freq, noteDur, gain, wave = 'pulse25') => {
+    const note = tone({ freq, dur: noteDur, wave, attack: 0.004, release: 0.06, gain });
+    for (let i = 0; i < note.length && Math.round(t0 * SR) + i < n; i++) {
+      out[Math.round(t0 * SR) + i] += note[i];
+    }
+  };
+  if (kind === 'good') {
+    // arpège pentatonique montant, bref et lumineux
+    put(0, pentaHz(4, 0), 0.06, 0.8);
+    put(0.07, pentaHz(5, 0), 0.06, 0.9);
+    put(0.14, pentaHz(7, 0), 0.14, 1);
+  } else if (kind === 'bad') {
+    // seconde mineure descendante qui bourdonne : la moue du public
+    put(0, hz(-10), 0.16, 0.9, 'saw');
+    put(0.1, hz(-11), 0.22, 0.9, 'saw');
+    onePoleLPInPlace(out, 900);
+  } else {
+    // « dare » : glissé chromatique interrogatif (le public hausse un sourcil)
+    put(0, hz(0), 0.07, 0.8);
+    put(0.09, hz(1), 0.07, 0.8);
+    put(0.18, hz(3), 0.12, 0.95);
+  }
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(out[i]));
+  if (peak > 1e-9) for (let i = 0; i < n; i++) out[i] /= peak;
+  chipCrushInPlace(out);
+  for (let i = 0; i < n; i++) out[i] *= 0.5;
+  // fondu de fin (pas une boucle : simple one-shot propre)
+  const FADE = Math.round(0.02 * SR);
+  for (let i = 0; i < FADE; i++) out[n - 1 - i] *= i / FADE;
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -1017,13 +1060,22 @@ function main() {
     }
   }
   const sfxDir = join(ROOT, 'public', 'assets', 'sfx');
+  mkdirSync(sfxDir, { recursive: true });
   const applauseFile = join(sfxDir, 'applause.wav');
   if (force || !existsSync(applauseFile)) {
-    mkdirSync(sfxDir, { recursive: true });
     writeWav(applauseFile, [generateApplause()]);
     generated++;
   } else {
     skipped++;
+  }
+  for (const kind of ['good', 'bad', 'dare']) {
+    const file = join(sfxDir, `pose-${kind}.wav`);
+    if (force || !existsSync(file)) {
+      writeWav(file, [generateStinger(kind)]);
+      generated++;
+    } else {
+      skipped++;
+    }
   }
   const dt = ((Date.now() - t0) / 1000).toFixed(1);
   console.log(`stems placeholder : ${generated} générés, ${skipped} ignorés (${dt} s)`);

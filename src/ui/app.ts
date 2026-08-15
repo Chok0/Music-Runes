@@ -118,6 +118,8 @@ export function mountApp(root: HTMLElement): void {
     muted: false,
     selectedCardId: null as string | null,
     panelOpen: window.matchMedia('(min-width: 900px)').matches,
+    /** Message transitoire (refus de destruction…), affiché au pied de page. */
+    notice: null as string | null,
   };
   let drag: DragState | null = null;
   let handPreviewTimer: number | null = null;
@@ -809,6 +811,8 @@ export function mountApp(root: HTMLElement): void {
     }
     footer.appendChild(dropRow);
 
+    if (ui.notice) footer.appendChild(el('div', 'footer__notice', ui.notice));
+
     // Pioche + échanges : la zone est la CIBLE du drag-down d'une carte de
     // main (défausse destructrice + repioche, dans la limite des échanges).
     const pile = el('div', 'pile');
@@ -841,7 +845,9 @@ export function mountApp(root: HTMLElement): void {
     for (const id of state.hand) {
       const card = cardOf(id);
       if (!card) continue;
-      const cardEl = createCardElement(card);
+      // Format compact (retour playtest #4) : forme + couleur + valeur —
+      // la main se scanne d'un coup d'œil et tient sur une ligne.
+      const cardEl = createCardElement(card, { compact: true });
       cardEl.dataset['key'] = `card-${card.id}`;
       if (ui.selectedCardId === card.id) cardEl.classList.add('card--selected');
       attachCardPointerHandlers(cardEl, card, { kind: 'hand' });
@@ -914,6 +920,82 @@ export function mountApp(root: HTMLElement): void {
     }
   }
 
+  // --- Pose avec réaction du public (la boussole — retour playtest #4) -----
+
+  /** Nature de la réaction du public à la pose de `card` sur `slot`. */
+  function poseReaction(state: GameState, card: Card, slot: SlotId): 'good' | 'bad' | 'dare' | 'neutral' {
+    const recipe = store?.currentRecipe() ?? null;
+    if (!recipe) return 'neutral';
+    let dare = false;
+    for (const other of state.activeSlots) {
+      if (other === slot) continue;
+      const id = state.board[other];
+      if (!id || id === card.id) continue;
+      const otherCard = cardOf(id);
+      if (!otherCard) continue;
+      if (rules.pairDetails(card, otherCard, recipe, data.scoring).some((d) => d.kind === 'requested_conflict')) {
+        dare = true;
+      }
+    }
+    const delta = hypotheticalDelta(state, recipe, card, slot);
+    if (dare) return 'dare';
+    return delta > 0 ? 'good' : delta < 0 ? 'bad' : 'neutral';
+  }
+
+  const EMOTES: Record<'good' | 'bad' | 'dare', string[]> = {
+    good: ['🕺', '💃', '🙌', '👏'],
+    bad: ['😬', '🙈', '😒'],
+    dare: ['😲', '🤨', '🔥'],
+  };
+
+  /** Émote flottante au-dessus du slot — spawn APRÈS le re-render de la pose. */
+  function spawnEmote(slot: SlotId, kind: 'good' | 'bad' | 'dare' | 'neutral'): void {
+    if (kind === 'neutral') return;
+    const slotEl = root.querySelector(`.slot[data-slot="${slot}"]`);
+    if (!slotEl) return;
+    const pool = EMOTES[kind];
+    const emote = el('div', `emote emote--${kind}`, pool[Math.floor(Math.random() * pool.length)]);
+    emote.addEventListener('animationend', () => emote.remove());
+    slotEl.appendChild(emote);
+  }
+
+  /** Message transitoire (ex. refus de destruction), affiché dans le pied de page. */
+  let noticeTimer: number | null = null;
+  function showNotice(text: string): void {
+    ui.notice = text;
+    if (noticeTimer !== null) window.clearTimeout(noticeTimer);
+    noticeTimer = window.setTimeout(() => {
+      noticeTimer = null;
+      ui.notice = null;
+      rerender();
+    }, 2600);
+    rerender();
+  }
+
+  /** Pose + réaction du public (stinger + émote). Point d'entrée unique. */
+  function placeWithFeedback(cardId: string, slot: SlotId): void {
+    const state = store?.getState();
+    if (!state) return;
+    const card = cardOf(cardId);
+    // Remplacement refusé par le garde anti-soft-lock : expliquer, pas ignorer.
+    if (
+      state.board[slot] !== null &&
+      state.hand.includes(cardId) &&
+      (store?.destructionLocked() ?? false)
+    ) {
+      showNotice('🛑 Remplacer détruirait un disque — et il t’en faut assez pour finir la scène !');
+      return;
+    }
+    const kind = card ? poseReaction(state, card, slot) : 'neutral';
+    const before = store?.getState().board[slot];
+    store?.place(cardId, slot); // notifie → re-render synchrone
+    const after = store?.getState().board[slot];
+    if (after === cardId && before !== cardId) {
+      if (ui.audioStatus === 'ready' && !ui.muted) audio.playPoseFeedback(kind);
+      spawnEmote(slot, kind);
+    }
+  }
+
   // --- Interactions : clic-pour-poser --------------------------------------
   function handleCardTap(card: Card, origin: CardOrigin): void {
     const state = store?.getState();
@@ -922,7 +1004,7 @@ export function mountApp(root: HTMLElement): void {
     if (ui.selectedCardId && ui.selectedCardId !== card.id && origin.kind === 'board') {
       const selected = ui.selectedCardId;
       ui.selectedCardId = null;
-      store?.place(selected, origin.slot); // notifie → re-render
+      placeWithFeedback(selected, origin.slot);
       return;
     }
     ui.selectedCardId = ui.selectedCardId === card.id ? null : card.id;
@@ -939,7 +1021,7 @@ export function mountApp(root: HTMLElement): void {
       rerender();
       return;
     }
-    store?.place(selected, slot); // notifie → re-render
+    placeWithFeedback(selected, slot);
   }
 
   // --- Interactions : drag & drop Pointer Events ----------------------------
@@ -983,7 +1065,7 @@ export function mountApp(root: HTMLElement): void {
       const overDiscard = d.overDiscard;
       cleanupDrag();
       if (hoverSlot) {
-        store?.place(d.cardId, hoverSlot); // notifie → re-render
+        placeWithFeedback(d.cardId, hoverSlot);
         // Relâchée sur son propre slot (ou un slot verrouillé) : place()
         // no-op sans notification — on efface quand même les halos/deltas.
         if (store) applyActiveFeedback(store.getState());

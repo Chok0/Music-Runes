@@ -277,6 +277,12 @@ export interface GameStore {
    */
   discard(cardId: string): void;
   /**
+   * true si détruire un disque de plus rendrait une requête restante
+   * impossible à remplir — les remplacements destructeurs sont alors refusés
+   * (garde anti-soft-lock ; l'UI s'en sert pour expliquer le refus).
+   */
+  destructionLocked(): boolean;
+  /**
    * Drain d'attention (appelé par l'horloge de l'app, une fois par mesure).
    * SILENCIEUX (pas de notification) sauf passage à zéro → phase failed +
    * notification. Retourne l'attention restante.
@@ -351,6 +357,8 @@ export interface AudioEngine {
   setDucked(ducked: boolean): void;
   /** Vide tous les slots (fin de scène) sans détruire le moteur : la tournée continue. */
   clearAllSlots(): void;
+  /** Réaction sonore du public à une pose (no-op si neutre ou SFX indisponible). */
+  playPoseFeedback(kind: 'good' | 'bad' | 'dare' | 'neutral'): void;
   /** Applaudissements de fin de scène (one-shot, no-op si le SFX est indisponible). */
   playApplause(): void;
   dispose(): void;
