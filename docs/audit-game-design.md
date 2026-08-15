@@ -151,3 +151,66 @@ sur les disques, jauge d'attention façon Mastermind) :
 Critère de réussite du jalon, à vérifier en playtest #4 : le joueur doit
 pouvoir dire « j'ai raté et je sais pourquoi » et « j'ai eu chaud » — les
 deux phrases qui manquaient.
+
+---
+
+## 5. Post-playtest #4 — « on a empilé des systèmes » : l'aveu et le plan
+
+Verdict du playtest #4 : toujours « l'impression de poser en vrac ». Le
+designer le formule exactement : *« on a empilé des systèmes et des concepts
+de game design sans résoudre le fond de la tension ni la lisibilité de
+l'enjeu caché ou de la logique interne des assemblages »*. C'est vrai, et
+c'est le diagnostic le plus utile de la série.
+
+Les couches ajoutées (tournée, économie, destruction, jauge) sont de la
+STRUCTURE autour du tour de jeu — mais l'INTÉRIEUR du tour n'a jamais changé :
+poser 4 cartes qui, quoi qu'il arrive, produisent un mix qui marche et un
+score qui tombe. L'outil créatif flexible (tout se superpose, par
+construction musicale) tue l'enjeu si la RÈGLE ne recrée pas de l'improbable.
+
+### Les trois manques sont UN seul redesign du tour de jeu
+
+1. **La logique interne des assemblages** → des mains NOMMÉES façon poker
+   (Paire, Brelan, Carré de formes ; Camaïeu d'énergie, Gradient complet…) :
+   une hiérarchie universellement lisible de ce qu'est un « bon » assemblage,
+   à la place de la soupe de ±2.
+2. **L'enjeu caché / deviner la combinaison** → l'ENVIE SECRÈTE du public :
+   en plus de la recette affichée, 1-2 préférences cachées (un genre adoré,
+   une énergie détestée…) qui ne se découvrent QUE par ses réactions aux
+   poses. Le « deviner » du Mastermind, sans solution unique.
+3. **La réaction comme boussole** → chaque pose provoque une réaction
+   immédiate, sonore et visuelle, qui EST l'information du point 2 (posé en
+   partie : émotes + stingers).
+
+Ensemble : poser = lancer un dé (réaction incertaine), lire = déduire
+(l'envie cachée), viser = assembler (une main nommée). Nom de travail du
+redesign : **« Le Verdict du Public »** — validé par le designer (« go
+verdict », avec deux cadrages : mastermind TOUT-OU-RIEN — l'envie est
+entièrement affichée ou entièrement cachée — et identité sonore par carte
+lisible dans le langage visuel) et **✅ implémenté** : scoring v2
+(data/scoring.json), envies secrètes dans scenes.json (Salon R2, Grand Mix
+R1-R2), réactions de pose pilotées par l'envie (le canal d'information du
+mastermind), deltas/verdict masqués en mode secret (l'arithmétique ne doit
+pas résoudre l'énigme), révélation au drop, annonce de main en grand, liens
+d'affinité épurés (plein = même Forme, pointillé = même Couleur), timbres
+par carte seedés dans le générateur.
+
+### Correctifs immédiats livrés avec ce constat
+
+- Anti-soft-lock : une destruction est refusée (et expliquée) si elle rendait
+  une requête restante infinissable — le tutoriel est couvert d'office.
+- Régression réparée : le fantôme de drag ne suivait plus le doigt (un
+  `position: relative` tardif écrasait le `position: fixed` du fantôme).
+- Main en format compact (forme + couleur + valeur) sur une ligne ; zones de
+  pose vides plus affirmées.
+- Réactions du public à chaque pose : émote flottante + stinger 8-bit
+  (arpège montant / buzz déçu / gimmick interrogatif) — le début du point 3.
+
+### Sur « toutes les cartes se valent » musicalement
+
+En partie structurel : même tempo, même tonalité, même progression — c'est le
+prix de la superposabilité (DropMix payait le même, mais avec des samples de
+morceaux CONNUS : l'identité venait du contenu, pas du système). Pistes par
+coût croissant : timbres dédiés PAR CARTE (pas par genre) dans le générateur ;
+motifs signatures plus contrastés ; et à terme les vrais samples du designer,
+que l'architecture attend déjà (remplacer les WAV, tout suit).

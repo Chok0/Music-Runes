@@ -44,20 +44,23 @@ function makeFakeRules(unmetConditions = 0): { rules: RulesApi; theoreticalMaxCa
   const rules: RulesApi = {
     matchesFilter: () => true,
     evaluateBoard: (placed): ScoreBreakdown => ({
-      pairs: [],
+      handKind: 'none',
+      handLabel: 'Aucune main',
+      handPoints: 0,
+      colors: [],
+      colorPoints: 0,
+      base: placed.length * 5,
       conditions: Array.from({ length: unmetConditions }, (_, i) => ({
         index: i,
         label: `condition ${i}`,
         met: false,
-        points: 0,
       })),
-      coherence: 0,
-      objective: placed.length * 5,
-      audacious: 0,
-      audaciousApplied: false,
+      conditionsMet: 0,
+      multiplier: 1,
+      aversionsViolated: 0,
       total: placed.length * 5,
     }),
-    pairDetails: () => [],
+    cardAffinity: () => ({ sameGenre: false, sameEnergy: false }),
     theoreticalMax: (_deck, recipe, _cfg, boardSize) => {
       theoreticalMaxCalls.push(`${recipe.id}:${boardSize ?? 4}`);
       return 40;
@@ -359,6 +362,32 @@ describe('slots actifs (progressivité tutorielle) et deck restreint', () => {
     expect(game.getState().board.harmonie).toBe(cardIdAt(2));
   });
 
+  it('anti-soft-lock : la destruction est refusée si elle rendait la scène infinissable', () => {
+    // Tutoriel type : 4 disques possédés, une requête à venir exige les 4 slots.
+    const owned = data.cards.slice(0, 4).map((c) => c.id);
+    const { game } = newGame(
+      TEST_CONFIG,
+      [
+        { recipe: recipeAt(0), slots: ['rythme', 'basse'] },
+        { recipe: recipeAt(1), slots: [...SLOT_IDS] },
+      ],
+      owned,
+    );
+    game.startSet();
+    expect(game.destructionLocked()).toBe(true); // 4 disques pour 4 slots à venir
+    const [a, b, c] = [owned[0]!, owned[1]!, owned[2]!];
+    game.place(a, 'rythme');
+    const before = game.getState();
+    game.place(b, 'rythme'); // remplacement destructeur → refusé
+    expect(game.getState()).toEqual(before);
+    // Le déplacement et la pose sur slot vide restent permis.
+    game.place(a, 'basse');
+    expect(game.getState().board.basse).toBe(a);
+    game.place(c, 'rythme');
+    expect(game.getState().board.rythme).toBe(c);
+    expect(game.getState().destroyed).toEqual([]);
+  });
+
   it('deckIds restreint la pioche au deck du joueur', () => {
     const owned = data.cards.slice(0, 4).map((c) => c.id);
     const { game } = newGame(
@@ -525,8 +554,10 @@ describe('subscribe / getState', () => {
       recipeId: 'x',
       discPoints: 0,
       breakdown: {
-        pairs: [], conditions: [], coherence: 0, objective: 0,
-        audacious: 0, audaciousApplied: false, total: 0,
+        handKind: 'none', handLabel: 'Aucune main', handPoints: 0,
+        colors: [], colorPoints: 0, base: 0,
+        conditions: [], conditionsMet: 0, multiplier: 1,
+        aversionsViolated: 0, total: 0,
       },
       stars: 0,
       theoreticalMax: 0,

@@ -1,11 +1,20 @@
 /**
- * Décomposition d'un ScoreBreakdown ligne par ligne (exigence GDD §4 :
- * le joueur doit comprendre POURQUOI il score). Réutilisée par le panneau
- * « score en direct » et par le récap de fin de requête.
+ * Décomposition d'un ScoreBreakdown v2 « Verdict du public » ligne par ligne
+ * (exigence GDD §4 : le joueur doit comprendre POURQUOI il score).
+ * Réutilisée par le panneau « score en direct » et par le récap de requête.
  */
-import type { GameData, ScoreBreakdown } from '../types';
+import type { ScoreBreakdown } from '../types';
 import { el } from './dom';
-import { formatPoints, pairKindLabel } from './format';
+import { formatPoints } from './format';
+
+export interface BreakdownViewOptions {
+  /**
+   * Envie SECRÈTE non révélée (mode jeu) : les conditions, le multiplicateur
+   * et le total sont masqués — seules la main et les couleurs (objectives,
+   * lisibles sur le plateau) restent affichées. Le verdict tombe au drop.
+   */
+  secretHidden?: boolean;
+}
 
 function row(tone: string, label: string, points: string): HTMLElement {
   const r = el('div', `breakdown__row breakdown__row--${tone}`);
@@ -14,48 +23,47 @@ function row(tone: string, label: string, points: string): HTMLElement {
   return r;
 }
 
-export function renderBreakdownLines(breakdown: ScoreBreakdown, data: GameData): HTMLElement {
+export function renderBreakdownLines(
+  breakdown: ScoreBreakdown,
+  opts: BreakdownViewOptions = {},
+): HTMLElement {
   const box = el('div', 'breakdown');
-  const cardName = (id: string): string => data.cardById.get(id)?.name ?? id;
 
-  const pairs = el('div', 'breakdown__section');
-  pairs.appendChild(el('h3', 'breakdown__heading', 'Paires'));
-  if (breakdown.pairs.length === 0) {
-    pairs.appendChild(row('muted', 'Aucune interaction entre cartes.', ''));
-  }
-  for (const p of breakdown.pairs) {
-    const tone =
-      p.kind === 'requested_conflict' ? 'dare' : p.points > 0 ? 'plus' : p.points < 0 ? 'minus' : 'muted';
-    pairs.appendChild(
-      row(
-        tone,
-        `${cardName(p.a)} + ${cardName(p.b)} — ${pairKindLabel(p.kind)}`,
-        p.kind === 'requested_conflict' ? 'exemptée' : formatPoints(p.points),
-      ),
-    );
-  }
-  box.appendChild(pairs);
-
-  const conds = el('div', 'breakdown__section');
-  conds.appendChild(el('h3', 'breakdown__heading', 'Conditions de la requête'));
-  for (const c of breakdown.conditions) {
-    conds.appendChild(
-      row(c.met ? 'plus' : 'muted', `${c.met ? '✓' : '○'} ${c.label}`, c.met ? formatPoints(c.points) : '—'),
-    );
-  }
-  box.appendChild(conds);
-
-  const totals = el('div', 'breakdown__section breakdown__section--totals');
-  totals.appendChild(row(breakdown.coherence < 0 ? 'minus' : 'plus', 'Cohérence', formatPoints(breakdown.coherence)));
-  totals.appendChild(row('plus', 'Objectif', formatPoints(breakdown.objective)));
-  totals.appendChild(
+  const handSection = el('div', 'breakdown__section');
+  handSection.appendChild(el('h3', 'breakdown__heading', 'Main'));
+  handSection.appendChild(
     row(
-      breakdown.audaciousApplied ? 'dare' : 'muted',
-      'Résolution audacieuse',
-      breakdown.audaciousApplied ? formatPoints(breakdown.audacious) : '—',
+      breakdown.handKind === 'none' ? 'muted' : 'plus',
+      breakdown.handLabel,
+      breakdown.handKind === 'none' ? '—' : formatPoints(breakdown.handPoints),
     ),
   );
-  totals.appendChild(row('total', 'Total', formatPoints(breakdown.total)));
+  for (const color of breakdown.colors) {
+    handSection.appendChild(row('plus', color.label, formatPoints(color.points)));
+  }
+  box.appendChild(handSection);
+
+  const verdictSection = el('div', 'breakdown__section');
+  verdictSection.appendChild(el('h3', 'breakdown__heading', 'L’envie du public'));
+  if (opts.secretHidden) {
+    verdictSection.appendChild(row('muted', '❓ Envie secrète — observe les réactions du public', ''));
+  } else {
+    for (const c of breakdown.conditions) {
+      verdictSection.appendChild(row(c.met ? 'plus' : 'muted', `${c.met ? '✓' : '○'} ${c.label}`, ''));
+    }
+  }
+  box.appendChild(verdictSection);
+
+  const totals = el('div', 'breakdown__section breakdown__section--totals');
+  totals.appendChild(row('muted', 'Main + couleurs', String(breakdown.base)));
+  if (opts.secretHidden) {
+    totals.appendChild(row('muted', 'Verdict du public', '×❓'));
+    totals.appendChild(row('total', 'Total', '❓'));
+  } else {
+    const tone = breakdown.multiplier >= 2 ? 'plus' : breakdown.multiplier < 1 ? 'minus' : 'muted';
+    totals.appendChild(row(tone, 'Verdict du public', `×${breakdown.multiplier}`));
+    totals.appendChild(row('total', 'Total', String(breakdown.total)));
+  }
   box.appendChild(totals);
   return box;
 }

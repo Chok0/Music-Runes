@@ -1,32 +1,29 @@
 {
-  "schema_version": 1,
-  "model": "proposition_1_somme_ponderee",
-  "model_status": "parti pris de démarrage — Proposition 1 du GDD (section 4), Propositions 2 et 3 gardées en réserve pour A/B test",
-  "coherence": {
-    "same_genre_pair_bonus": 2,
-    "same_energy_pair_bonus": 1,
-    "contrast_pair_bonus": 2,
-    "contrast_pair_bonus_status": "proposition — bonus de contraste (GDD section 3, +N par paire Calme↔Intense) annoncé par le GDD mais absent de la lettre de la Proposition 1 (incohérence GDD à trancher) ; à valider en playtest, mettre à 0 pour la Proposition 1 stricte",
-    "unrequested_genre_conflict_pair_penalty": -2
+  "schema_version": 2,
+  "model": "verdict-du-public",
+  "model_status": "Remplace la Proposition 1 du GDD §4 (décision playtest #4, docs/audit-game-design.md §5) : mains nommées façon poker sur les deux axes visibles (Formes = Genres, Couleurs = Énergies), multipliées par la satisfaction de l'envie du public.",
+  "hands": {
+    "comment": "Mains de FORMES (Genres), la meilleure seule compte. À 2-3 cartes posées (tutoriel), seules paire et brelan sont atteignables.",
+    "pair": 10,
+    "two_pair": 18,
+    "three_of_a_kind": 25,
+    "four_of_a_kind": 40
   },
-  "objective": {
-    "per_condition_met_bonus": 5
+  "colors": {
+    "comment": "Bonus de COULEURS (Énergies), cumulables avec la main de formes.",
+    "camaieu_4": 20,
+    "camaieu_3": 8,
+    "gradient_complet": 12
   },
-  "audacious_resolution": {
-    "flat_bonus": 10
+  "verdict_multipliers": {
+    "comment": "L'envie du public multiplie (main + couleurs) : aucune condition remplie / une partie / toutes. Appliqué en arrondi inférieur.",
+    "none_met": 0.5,
+    "partially_met": 1,
+    "all_met": 2
   },
   "star_thresholds": [
     { "stars": 3, "min_ratio_of_theoretical_max": 0.8 },
     { "stars": 2, "min_ratio_of_theoretical_max": 0.5 },
     { "stars": 1, "min_ratio_of_theoretical_max": 0.25 }
-  ],
-  "genre_conflicts": {
-    "status": "matrice par défaut proposée — non définie par le GDD, à valider en playtest",
-    "pairs": [
-      ["Metal", "Ambient"],
-      ["Metal", "Jazz"],
-      ["Techno", "Jazz"],
-      ["Techno", "Ambient"]
-    ]
-  }
+  ]
 }

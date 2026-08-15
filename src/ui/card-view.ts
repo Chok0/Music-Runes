@@ -70,10 +70,12 @@ export function genreShapePicto(genre: Genre, energy?: string): SVGSVGElement {
 export interface CardViewOptions {
   /** Description du stem pour le slot où la carte est posée (info audio/UI). */
   stemDescription?: string;
+  /** Format main : forme + glyphe + valeur seulement — scannable d'un coup d'œil. */
+  compact?: boolean;
 }
 
 export function createCardElement(card: Card, opts: CardViewOptions = {}): HTMLElement {
-  const rootEl = el('div', 'card');
+  const rootEl = el('div', `card${opts.compact ? ' card--compact' : ''}`);
   rootEl.dataset['cardId'] = card.id;
   rootEl.dataset['genre'] = card.genre;
   rootEl.dataset['energy'] = card.energy;
@@ -105,10 +107,12 @@ export function createCardElement(card: Card, opts: CardViewOptions = {}): HTMLE
   const value = el('div', 'card__value', String(card.value));
   value.title = `Valeur : ${card.value} pt${card.value > 1 ? 's' : ''} au drop`;
   rootEl.appendChild(value);
-  rootEl.appendChild(el('div', 'card__name', card.name));
-  rootEl.appendChild(el('div', 'card__tags', `${card.genre} · ${card.energy}`));
-  if (opts.stemDescription) {
-    rootEl.appendChild(el('div', 'card__stem', opts.stemDescription));
+  if (!opts.compact) {
+    rootEl.appendChild(el('div', 'card__name', card.name));
+    rootEl.appendChild(el('div', 'card__tags', `${card.genre} · ${card.energy}`));
+    if (opts.stemDescription) {
+      rootEl.appendChild(el('div', 'card__stem', opts.stemDescription));
+    }
   }
   return rootEl;
 }

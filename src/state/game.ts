@@ -78,6 +78,30 @@ export function createGame(opts: CreateGameOptions): GameStore {
     return plan[requestIndex]?.slots ?? SLOT_IDS;
   }
 
+  /** Plus grand nombre de slots actifs parmi les requêtes restantes. */
+  function maxSlotsAhead(): number {
+    let max = 0;
+    for (let i = requestIndex; i < plan.length; i++) {
+      const step = plan[i];
+      if (step) max = Math.max(max, step.slots.length);
+    }
+    return max;
+  }
+
+  /** Disques encore possédés pour ce set (posés + main + pioche). */
+  function cardsRemaining(): number {
+    return hand.length + deck.length + SLOT_IDS.filter((s) => board[s] !== null).length;
+  }
+
+  /**
+   * true si détruire UN disque de plus rendrait une requête restante
+   * impossible à remplir — le garde anti-soft-lock : dans le tutoriel
+   * (4 disques pour 4 slots), toute destruction est refusée d'office.
+   */
+  function destructionLocked(): boolean {
+    return cardsRemaining() - 1 < maxSlotsAhead();
+  }
+
   /** Instantané immuable : jamais de référence mutable vers l'état interne
    * (breakdown compris — un consommateur qui trie/mute pairs ne doit pas
    * corrompre les résultats internes). */
@@ -155,11 +179,13 @@ export function createGame(opts: CreateGameOptions): GameStore {
         // cible est occupée, le slot source se vide sinon. Rien n'est détruit.
         board[sourceSlot] = occupant;
       } else {
-        hand.splice(handIndex, 1);
         // Remplacement DESTRUCTEUR (nouvelle boucle, audit §4) : le disque
         // éjecté de la platine est perdu pour le set — c'est le coût qui
         // remplace la limite de remplacements du GDD §11. Le plateau, lui,
         // reste persistant (GDD §11 ✅) : posé = posé jusqu'au remplacement.
+        // Refusé si la destruction rendait la scène infinissable (soft-lock).
+        if (occupant !== null && destructionLocked()) return;
+        hand.splice(handIndex, 1);
         if (occupant !== null) destroyed.push(occupant);
       }
       board[slot] = cardId;
@@ -180,6 +206,8 @@ export function createGame(opts: CreateGameOptions): GameStore {
       draw(1);
       notify();
     },
+
+    destructionLocked,
 
     tickAttention(amount = config.attentionDrainPerMeasure) {
       // Le public ne s'impatiente qu'en phase de jeu (pas pendant le récap).
@@ -222,7 +250,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
       setScore += breakdown.total + discPoints;
       // Réaction du public : chaque condition ratée draine l'attention, un
       // sans-faute en regagne un peu (plafonné au max de la scène).
-      const unmet = breakdown.conditions.filter((c) => !c.met).length;
+      const unmet = breakdown.conditions.length - breakdown.conditionsMet;
       if (unmet > 0) {
         attention = Math.max(0, attention - unmet * config.attentionUnmetConditionPenalty);
       } else {

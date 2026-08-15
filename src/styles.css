@@ -601,10 +601,17 @@ button {
   transition: border-color 150ms ease, background 150ms ease;
 }
 
+/* Zone de pose vide : affordance renforcée (retour playtest #4). */
 .slot--empty {
   border-style: dashed;
-  border-color: #3a3a4c;
+  border-width: 2px;
+  border-color: #4d4d68;
+  background: rgba(229, 165, 58, 0.03);
   justify-content: flex-start;
+}
+
+.slot--empty .slot__placeholder {
+  color: #6a6a86;
 }
 
 /* --------------------------------------------------------------------------
@@ -622,61 +629,25 @@ button {
 }
 
 .board-link line {
-  stroke-width: 2.5;
+  stroke-width: 3;
   stroke-linecap: round;
 }
 
-.link--good line {
+/* Même FORME (construit les mains) : trait plein vert. */
+.link--genre line {
   stroke: var(--good);
 }
 
-.link--bad line {
-  stroke: var(--bad);
+/* Même COULEUR (construit les camaïeux) : pointillé bleu. */
+.link--energy line {
+  stroke: var(--calme);
+  stroke-dasharray: 5 5;
 }
 
-.link--dare line {
-  stroke: var(--dare);
-  stroke-dasharray: 6 4;
-}
-
-.link--neutral line {
-  stroke: #34344a;
-  stroke-dasharray: 2 5;
-}
-
-.board-link rect {
-  fill: #16161f;
-  stroke-width: 1.5;
-}
-
-.board-link text {
-  font-size: 11px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.link--good rect {
-  stroke: var(--good);
-}
-
-.link--good text {
-  fill: var(--good);
-}
-
-.link--bad rect {
-  stroke: var(--bad);
-}
-
-.link--bad text {
-  fill: var(--bad);
-}
-
-.link--dare rect {
-  stroke: var(--dare);
-}
-
-.link--dare text {
-  fill: var(--dare);
+/* Les deux : trait plein doré, plus épais. */
+.link--both line {
+  stroke: var(--accent);
+  stroke-width: 4;
 }
 
 /* Slot verrouillé (progressivité tutorielle) : visible mais inerte. */
@@ -762,6 +733,8 @@ button {
    Cartes — forme = Genre, couleur = Énergie, glyphe = identité
    -------------------------------------------------------------------------- */
 .card {
+  position: relative; /* ancre du macaron de valeur — ne PAS redéclarer plus bas
+                         (écraserait le position:fixed du fantôme de drag) */
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -873,10 +846,6 @@ button {
 }
 
 /* Valeur commerciale (1-3) : macaron en coin — points de set au drop. */
-.card {
-  position: relative;
-}
-
 .card__value {
   position: absolute;
   top: 0.25rem;
@@ -898,6 +867,23 @@ button {
   font-weight: 700;
   text-align: center;
   line-height: 1.2;
+}
+
+/* Format compact (main) : forme + couleur + valeur, une ligne scannable. */
+.card--compact {
+  width: 3.9rem;
+  padding: 0.3rem 0.2rem;
+  gap: 0;
+}
+
+.card--compact .card__svg {
+  width: 2.6rem;
+  height: 2.6rem;
+}
+
+.card--compact .card__value {
+  top: 0.15rem;
+  left: 0.15rem;
 }
 
 /* La forme/couleur enseigne, le texte confirme (GDD §5). */
@@ -930,12 +916,12 @@ button {
     0 0 16px 2px rgba(224, 82, 82, 0.45);
 }
 
-/* Contradiction demandée par la recette : à tenter ! */
-.card.halo--dare {
-  border-color: var(--dare);
+/* Affinité de couleur (Énergie) : halo bleu doux. */
+.card.halo--energy {
+  border-color: var(--calme);
   box-shadow:
-    0 0 0 2px var(--dare),
-    0 0 16px 2px rgba(224, 166, 60, 0.5);
+    0 0 0 2px var(--calme),
+    0 0 16px 2px rgba(77, 127, 214, 0.45);
 }
 
 /* --------------------------------------------------------------------------
@@ -1070,10 +1056,64 @@ button {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.45rem;
+  gap: 0.35rem;
   padding: 0.3rem 0.15rem 0.4rem;
   border-radius: 12px;
   transition: background 150ms ease, box-shadow 150ms ease;
+}
+
+.footer__notice {
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  background: rgba(224, 82, 82, 0.14);
+  border: 1px solid rgba(224, 82, 82, 0.5);
+  color: #f3c8c8;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* --------------------------------------------------------------------------
+   Émotes du public : réaction flottante à chaque pose (la boussole)
+   -------------------------------------------------------------------------- */
+.emote {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  z-index: 20;
+  font-size: 1.9rem;
+  pointer-events: none;
+  animation: emote-float 1.1s ease-out both;
+}
+
+.emote--bad {
+  animation-name: emote-float, emote-wobble;
+  animation-duration: 1.1s, 0.3s;
+  animation-iteration-count: 1, 3;
+}
+
+@keyframes emote-float {
+  0% {
+    transform: translate(-50%, 0) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, -0.4rem) scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -2.6rem) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes emote-wobble {
+  0%,
+  100% {
+    margin-left: 0;
+  }
+  50% {
+    margin-left: 4px;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -1161,6 +1201,25 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--good);
+}
+
+/* L'annonce de main : la phrase que le joueur retient (« BRELAN TECHNO ! »). */
+.modal__hand {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: linear-gradient(120deg, #f2e2b8, var(--accent) 55%, #d66a3b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: stars-pop 500ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+/* Envie secrète : chip interrogative. */
+.hud__condition--secret {
+  color: var(--dare);
+  border-color: rgba(224, 166, 60, 0.55);
+  background: rgba(224, 166, 60, 0.08);
 }
 
 .modal__title {

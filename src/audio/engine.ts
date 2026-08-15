@@ -64,6 +64,7 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
   let initPromise: Promise<void> | null = null;
   let previewPlayer: Tone.Player | null = null;
   let applauseBuffer: Tone.ToneAudioBuffer | null = null;
+  const poseBuffers = new Map<string, Tone.ToneAudioBuffer>();
   let disposed = false;
 
   /** Rampe le gain d'une voie vers `target` à l'instant `time` (contexte audio). */
@@ -136,8 +137,8 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       }
     }
 
-    // SFX optionnel (placeholder généré par scripts/generate-stems.mjs) : son
-    // absence n'est jamais bloquante — les applaudissements seront muets.
+    // SFX optionnels (placeholders générés par scripts/generate-stems.mjs) :
+    // leur absence n'est jamais bloquante — les réactions seront muettes.
     try {
       applauseBuffer = await Tone.ToneAudioBuffer.fromUrl(
         `${import.meta.env.BASE_URL}assets/sfx/applause.wav`,
@@ -145,6 +146,18 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
     } catch {
       applauseBuffer = null;
     }
+    await Promise.all(
+      (['good', 'bad', 'dare'] as const).map(async (kind) => {
+        try {
+          const buffer = await Tone.ToneAudioBuffer.fromUrl(
+            `${import.meta.env.BASE_URL}assets/sfx/pose-${kind}.wav`,
+          );
+          poseBuffers.set(kind, buffer);
+        } catch {
+          // stinger manquant : réaction muette
+        }
+      }),
+    );
   }
 
   function stopPreview(): void {
@@ -253,6 +266,18 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       }
     },
 
+    playPoseFeedback(kind): void {
+      if (disposed || kind === 'neutral') return;
+      // « meh » réutilise le gimmick interrogatif (fichier pose-dare), plus bas.
+      const buffer = poseBuffers.get(kind === 'meh' ? 'dare' : kind);
+      if (!buffer) return;
+      // One-shot bref au-dessus du mix : la réaction du public à la pose.
+      const player = new Tone.Player(buffer).connect(master);
+      player.volume.value = kind === 'meh' ? -14 : -6;
+      player.onstop = () => player.dispose();
+      player.start(Tone.now());
+    },
+
     playApplause(): void {
       if (disposed || !applauseBuffer) return;
       // One-shot hors mix et hors ducking : les applaudissements doivent
@@ -283,6 +308,8 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
       buffers.clear();
       applauseBuffer?.dispose();
       applauseBuffer = null;
+      for (const buffer of poseBuffers.values()) buffer.dispose();
+      poseBuffers.clear();
       master.dispose();
       duck.dispose();
       // Le transport est un singleton global : on l'arrête, on ne le dispose pas.
