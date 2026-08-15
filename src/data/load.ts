@@ -113,13 +113,19 @@ function validateRecipe(raw: unknown, index: number): Recipe {
 function validateScoring(raw: unknown): ScoringConfig {
   const s = raw as ScoringConfig;
   if (!s || typeof s !== 'object') throw new DataError('scoring.json', 'objet attendu');
+  if (s.schema_version !== 2)
+    throw new DataError('scoring.json', `schema_version 2 attendu (« Verdict du public »), trouvé « ${String(s.schema_version)} »`);
   const nums: [string, unknown][] = [
-    ['coherence.same_genre_pair_bonus', s.coherence?.same_genre_pair_bonus],
-    ['coherence.same_energy_pair_bonus', s.coherence?.same_energy_pair_bonus],
-    ['coherence.contrast_pair_bonus', s.coherence?.contrast_pair_bonus],
-    ['coherence.unrequested_genre_conflict_pair_penalty', s.coherence?.unrequested_genre_conflict_pair_penalty],
-    ['objective.per_condition_met_bonus', s.objective?.per_condition_met_bonus],
-    ['audacious_resolution.flat_bonus', s.audacious_resolution?.flat_bonus],
+    ['hands.pair', s.hands?.pair],
+    ['hands.two_pair', s.hands?.two_pair],
+    ['hands.three_of_a_kind', s.hands?.three_of_a_kind],
+    ['hands.four_of_a_kind', s.hands?.four_of_a_kind],
+    ['colors.camaieu_4', s.colors?.camaieu_4],
+    ['colors.camaieu_3', s.colors?.camaieu_3],
+    ['colors.gradient_complet', s.colors?.gradient_complet],
+    ['verdict_multipliers.none_met', s.verdict_multipliers?.none_met],
+    ['verdict_multipliers.partially_met', s.verdict_multipliers?.partially_met],
+    ['verdict_multipliers.all_met', s.verdict_multipliers?.all_met],
   ];
   for (const [path, v] of nums) {
     if (typeof v !== 'number') throw new DataError('scoring.json', `${path} : nombre requis`);
@@ -132,12 +138,6 @@ function validateScoring(raw: unknown): ScoringConfig {
         'scoring.json',
         `star_thresholds : entrée invalide « ${JSON.stringify(t)} » (stars entier ≥ 0 et min_ratio_of_theoretical_max nombre requis)`
       );
-  }
-  if (!s.genre_conflicts || !Array.isArray(s.genre_conflicts.pairs))
-    throw new DataError('scoring.json', 'genre_conflicts.pairs : liste requise');
-  for (const pair of s.genre_conflicts.pairs) {
-    if (!Array.isArray(pair) || pair.length !== 2 || !GENRES.includes(pair[0]) || !GENRES.includes(pair[1]))
-      throw new DataError('scoring.json', `genre_conflicts : paire invalide « ${JSON.stringify(pair)} »`);
   }
   return s;
 }
@@ -183,6 +183,8 @@ function validateScene(
       throw new DataError('scenes.json', `${rWhere} : objet attendu`);
     if (!recipeById.has(req.recipe))
       throw new DataError('scenes.json', `${rWhere} : recette inconnue « ${String(req.recipe)} »`);
+    if (req.secret !== undefined && typeof req.secret !== 'boolean')
+      throw new DataError('scenes.json', `${rWhere} : secret doit être un booléen`);
     if (!Array.isArray(req.slots) || req.slots.length === 0)
       throw new DataError('scenes.json', `${rWhere} : slots (liste non vide) requis`);
     for (const slot of req.slots) {

@@ -30,7 +30,7 @@
       "cachet": 12,
       "requests": [
         { "recipe": "session-lounge", "slots": ["rythme", "basse", "harmonie", "lead"] },
-        { "recipe": "contraste-assume", "slots": ["rythme", "basse", "harmonie", "lead"] }
+        { "recipe": "contraste-assume", "slots": ["rythme", "basse", "harmonie", "lead"], "secret": true }
       ],
       "shop": {
         "intro": "Le disquaire est revenu. « La Pop, ça sauve toujours une soirée. Choisis. »",
@@ -93,8 +93,8 @@
       "grants_on_start": ["turbine-noire"],
       "cachet": 15,
       "requests": [
-        { "recipe": "improvisation-totale", "slots": ["rythme", "basse", "harmonie", "lead"] },
-        { "recipe": "set-monochrome", "slots": ["rythme", "basse", "harmonie", "lead"] },
+        { "recipe": "improvisation-totale", "slots": ["rythme", "basse", "harmonie", "lead"], "secret": true },
+        { "recipe": "set-monochrome", "slots": ["rythme", "basse", "harmonie", "lead"], "secret": true },
         { "recipe": "le-rappel", "slots": ["rythme", "basse", "harmonie", "lead"] }
       ]
     }

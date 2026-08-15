@@ -44,20 +44,23 @@ function makeFakeRules(unmetConditions = 0): { rules: RulesApi; theoreticalMaxCa
   const rules: RulesApi = {
     matchesFilter: () => true,
     evaluateBoard: (placed): ScoreBreakdown => ({
-      pairs: [],
+      handKind: 'none',
+      handLabel: 'Aucune main',
+      handPoints: 0,
+      colors: [],
+      colorPoints: 0,
+      base: placed.length * 5,
       conditions: Array.from({ length: unmetConditions }, (_, i) => ({
         index: i,
         label: `condition ${i}`,
         met: false,
-        points: 0,
       })),
-      coherence: 0,
-      objective: placed.length * 5,
-      audacious: 0,
-      audaciousApplied: false,
+      conditionsMet: 0,
+      multiplier: 1,
+      aversionsViolated: 0,
       total: placed.length * 5,
     }),
-    pairDetails: () => [],
+    cardAffinity: () => ({ sameGenre: false, sameEnergy: false }),
     theoreticalMax: (_deck, recipe, _cfg, boardSize) => {
       theoreticalMaxCalls.push(`${recipe.id}:${boardSize ?? 4}`);
       return 40;
@@ -551,8 +554,10 @@ describe('subscribe / getState', () => {
       recipeId: 'x',
       discPoints: 0,
       breakdown: {
-        pairs: [], conditions: [], coherence: 0, objective: 0,
-        audacious: 0, audaciousApplied: false, total: 0,
+        handKind: 'none', handLabel: 'Aucune main', handPoints: 0,
+        colors: [], colorPoints: 0, base: 0,
+        conditions: [], conditionsMet: 0, multiplier: 1,
+        aversionsViolated: 0, total: 0,
       },
       stars: 0,
       theoreticalMax: 0,

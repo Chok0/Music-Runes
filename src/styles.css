@@ -629,61 +629,25 @@ button {
 }
 
 .board-link line {
-  stroke-width: 2.5;
+  stroke-width: 3;
   stroke-linecap: round;
 }
 
-.link--good line {
+/* Même FORME (construit les mains) : trait plein vert. */
+.link--genre line {
   stroke: var(--good);
 }
 
-.link--bad line {
-  stroke: var(--bad);
+/* Même COULEUR (construit les camaïeux) : pointillé bleu. */
+.link--energy line {
+  stroke: var(--calme);
+  stroke-dasharray: 5 5;
 }
 
-.link--dare line {
-  stroke: var(--dare);
-  stroke-dasharray: 6 4;
-}
-
-.link--neutral line {
-  stroke: #34344a;
-  stroke-dasharray: 2 5;
-}
-
-.board-link rect {
-  fill: #16161f;
-  stroke-width: 1.5;
-}
-
-.board-link text {
-  font-size: 11px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.link--good rect {
-  stroke: var(--good);
-}
-
-.link--good text {
-  fill: var(--good);
-}
-
-.link--bad rect {
-  stroke: var(--bad);
-}
-
-.link--bad text {
-  fill: var(--bad);
-}
-
-.link--dare rect {
-  stroke: var(--dare);
-}
-
-.link--dare text {
-  fill: var(--dare);
+/* Les deux : trait plein doré, plus épais. */
+.link--both line {
+  stroke: var(--accent);
+  stroke-width: 4;
 }
 
 /* Slot verrouillé (progressivité tutorielle) : visible mais inerte. */
@@ -952,12 +916,12 @@ button {
     0 0 16px 2px rgba(224, 82, 82, 0.45);
 }
 
-/* Contradiction demandée par la recette : à tenter ! */
-.card.halo--dare {
-  border-color: var(--dare);
+/* Affinité de couleur (Énergie) : halo bleu doux. */
+.card.halo--energy {
+  border-color: var(--calme);
   box-shadow:
-    0 0 0 2px var(--dare),
-    0 0 16px 2px rgba(224, 166, 60, 0.5);
+    0 0 0 2px var(--calme),
+    0 0 16px 2px rgba(77, 127, 214, 0.45);
 }
 
 /* --------------------------------------------------------------------------
@@ -1237,6 +1201,25 @@ button {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   color: var(--good);
+}
+
+/* L'annonce de main : la phrase que le joueur retient (« BRELAN TECHNO ! »). */
+.modal__hand {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: linear-gradient(120deg, #f2e2b8, var(--accent) 55%, #d66a3b);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: stars-pop 500ms cubic-bezier(0.2, 1.6, 0.4, 1) both;
+}
+
+/* Envie secrète : chip interrogative. */
+.hud__condition--secret {
+  color: var(--dare);
+  border-color: rgba(224, 166, 60, 0.55);
+  background: rgba(224, 166, 60, 0.08);
 }
 
 .modal__title {

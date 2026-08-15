@@ -1,5 +1,4 @@
 /** Libellés français partagés par le HUD, le panneau score et les écrans. */
-import type { PairDetail } from '../types';
 
 /** Signe explicite ; U+2212 pour un vrai signe moins typographique. */
 export function formatPoints(n: number): string {
@@ -12,21 +11,6 @@ export function formatPoints(n: number): string {
 export function starsText(stars: number, max = 3): string {
   const n = Math.max(0, Math.min(max, Math.round(stars)));
   return '★'.repeat(n) + '☆'.repeat(max - n);
-}
-
-export function pairKindLabel(kind: PairDetail['kind']): string {
-  switch (kind) {
-    case 'same_genre':
-      return 'même Genre';
-    case 'same_energy':
-      return 'même Énergie';
-    case 'contrast':
-      return 'contraste Calme/Intense';
-    case 'conflict':
-      return 'contradiction';
-    case 'requested_conflict':
-      return 'contradiction demandée';
-  }
 }
 
 /**

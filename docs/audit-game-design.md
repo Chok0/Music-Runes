@@ -184,8 +184,16 @@ construction musicale) tue l'enjeu si la RÈGLE ne recrée pas de l'improbable.
 
 Ensemble : poser = lancer un dé (réaction incertaine), lire = déduire
 (l'envie cachée), viser = assembler (une main nommée). Nom de travail du
-redesign : **« Le Verdict du Public »** — à valider avant chantier, car il
-REMPLACE la Proposition 1 du GDD §4 (pivot, pas ajout).
+redesign : **« Le Verdict du Public »** — validé par le designer (« go
+verdict », avec deux cadrages : mastermind TOUT-OU-RIEN — l'envie est
+entièrement affichée ou entièrement cachée — et identité sonore par carte
+lisible dans le langage visuel) et **✅ implémenté** : scoring v2
+(data/scoring.json), envies secrètes dans scenes.json (Salon R2, Grand Mix
+R1-R2), réactions de pose pilotées par l'envie (le canal d'information du
+mastermind), deltas/verdict masqués en mode secret (l'arithmétique ne doit
+pas résoudre l'énigme), révélation au drop, annonce de main en grand, liens
+d'affinité épurés (plein = même Forme, pointillé = même Couleur), timbres
+par carte seedés dans le générateur.
 
 ### Correctifs immédiats livrés avec ce constat
 

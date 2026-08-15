@@ -1,24 +1,32 @@
 /**
- * Moteur de règles/scoring — Proposition 1 paramétrée.
+ * Moteur de règles/scoring v2 — « Le Verdict du Public »
+ * (docs/audit-game-design.md §5, remplace la Proposition 1 du GDD §4).
  *
- * Spécification : docs/modele-de-donnees.md §3 (conditions/filtres) et §4
- * (scoring, conflits de Genre, règle « demandée par la recette »).
+ * La logique interne des assemblages est une grammaire de MAINS NOMMÉES,
+ * lisible dans le vocabulaire visuel des cartes :
+ * - FORMES (Genres) : Paire, Double Paire, Brelan, Carré — la meilleure seule ;
+ * - COULEURS (Énergies) : Camaïeu (3 ou 4 identiques), Gradient complet
+ *   (les 3 énergies présentes) — cumulables ;
+ * - le tout multiplié par le VERDICT : l'envie du public (les conditions de la
+ *   recette) est-elle ignorée (×0.5), partiellement (×1) ou totalement (×2)
+ *   servie ? total = floor((main + couleurs) × multiplicateur).
+ *
  * Pur et sans état : aucune dépendance UI/audio/DOM (architecture §3.2).
  */
 import type {
   Card,
+  ColorDetail,
   ConditionDetail,
   ConditionFilter,
+  Energy,
   Genre,
-  PairDetail,
+  HandKind,
   Recipe,
   RecipeCondition,
   RulesApi,
   ScoreBreakdown,
   ScoringConfig,
 } from '../types';
-
-type MinCountCondition = Extract<RecipeCondition, { type: 'min_count' }>;
 
 /** ET entre les champs du filtre, OU entre les valeurs d'un champ (§3). */
 function matchesFilter(card: Card, filter: ConditionFilter): boolean {
@@ -27,70 +35,62 @@ function matchesFilter(card: Card, filter: ConditionFilter): boolean {
   return true;
 }
 
-/** Clé canonique d'une paire de Genres (la matrice est symétrique). */
-function conflictKey(a: Genre, b: Genre): string {
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
-}
+const HAND_NAMES: Record<Exclude<HandKind, 'none'>, string> = {
+  pair: 'Paire',
+  two_pair: 'Double paire',
+  three_of_a_kind: 'Brelan',
+  four_of_a_kind: 'Carré',
+};
 
-function buildConflictSet(cfg: ScoringConfig): Set<string> {
-  const set = new Set<string>();
-  for (const pair of cfg.genre_conflicts.pairs) set.add(conflictKey(pair[0], pair[1]));
-  return set;
-}
-
-/**
- * Règle « demandée par la recette » (§4) : une paire en conflit de Genre est
- * demandée s'il existe deux conditions min_count DIFFÉRENTES A et B, à filtre
- * de genre défini, telles que c1 matche A et c2 matche B (les deux
- * permutations sont testées par la double boucle). Matcher un filtre dont
- * `genre` est défini implique card.genre ∈ filter.genre.
- */
-function isRequestedConflict(c1: Card, c2: Card, recipe: Recipe): boolean {
-  const genreMinCounts = recipe.conditions.filter(
-    (c): c is MinCountCondition => c.type === 'min_count' && c.filter.genre !== undefined,
-  );
-  for (const condA of genreMinCounts) {
-    for (const condB of genreMinCounts) {
-      if (condA === condB) continue;
-      if (matchesFilter(c1, condA.filter) && matchesFilter(c2, condB.filter)) return true;
+/** Comptes par valeur, triés décroissants, avec la valeur dominante. */
+function tally<T extends string>(values: T[]): { counts: number[]; top: T | null } {
+  const map = new Map<T, number>();
+  for (const v of values) map.set(v, (map.get(v) ?? 0) + 1);
+  let top: T | null = null;
+  let topCount = 0;
+  for (const [v, count] of map) {
+    if (count > topCount) {
+      top = v;
+      topCount = count;
     }
   }
-  return false;
+  return { counts: [...map.values()].sort((x, y) => y - x), top };
 }
 
-/** Détails d'une seule paire — logique partagée par pairDetails et evaluateBoard. */
-function computePairDetails(
-  a: Card,
-  b: Card,
-  recipe: Recipe,
+/** Main de formes : la meilleure combinaison de Genres présente. */
+function detectHand(
+  placed: Card[],
   cfg: ScoringConfig,
-  conflicts: Set<string>,
-): PairDetail[] {
-  const details: PairDetail[] = [];
-  if (a.genre === b.genre) {
-    details.push({ a: a.id, b: b.id, kind: 'same_genre', points: cfg.coherence.same_genre_pair_bonus });
+): { kind: HandKind; label: string; points: number } {
+  const { counts, top } = tally(placed.map((c) => c.genre));
+  const [first = 0, second = 0] = counts;
+  let kind: HandKind = 'none';
+  if (first >= 4) kind = 'four_of_a_kind';
+  else if (first === 3) kind = 'three_of_a_kind';
+  else if (first === 2 && second === 2) kind = 'two_pair';
+  else if (first === 2) kind = 'pair';
+  if (kind === 'none' || top === null) {
+    return { kind: 'none', label: 'Aucune main', points: 0 };
   }
-  if (a.energy === b.energy) {
-    details.push({ a: a.id, b: b.id, kind: 'same_energy', points: cfg.coherence.same_energy_pair_bonus });
+  const label =
+    kind === 'two_pair' ? HAND_NAMES[kind] : `${HAND_NAMES[kind]} ${top}`;
+  return { kind, label, points: cfg.hands[kind] };
+}
+
+/** Bonus de couleurs (Énergies), cumulables. */
+function detectColors(placed: Card[], cfg: ScoringConfig): ColorDetail[] {
+  const details: ColorDetail[] = [];
+  const energies = placed.map((c) => c.energy);
+  const { counts, top } = tally(energies);
+  const [first = 0] = counts;
+  if (first >= 4 && top) {
+    details.push({ kind: 'camaieu_4', label: `Camaïeu ${top}`, points: cfg.colors.camaieu_4 });
+  } else if (first === 3 && top) {
+    details.push({ kind: 'camaieu_3', label: `Camaïeu ${top} (3)`, points: cfg.colors.camaieu_3 });
   }
-  const isContrast =
-    (a.energy === 'Calme' && b.energy === 'Intense') || (a.energy === 'Intense' && b.energy === 'Calme');
-  // contrast_pair_bonus à 0 = Proposition 1 stricte : le détail n'est pas émis.
-  if (isContrast && cfg.coherence.contrast_pair_bonus !== 0) {
-    details.push({ a: a.id, b: b.id, kind: 'contrast', points: cfg.coherence.contrast_pair_bonus });
-  }
-  if (a.genre !== b.genre && conflicts.has(conflictKey(a.genre, b.genre))) {
-    if (isRequestedConflict(a, b, recipe)) {
-      // Conflit demandé par la recette : exempté de pénalité (points 0).
-      details.push({ a: a.id, b: b.id, kind: 'requested_conflict', points: 0 });
-    } else {
-      details.push({
-        a: a.id,
-        b: b.id,
-        kind: 'conflict',
-        points: cfg.coherence.unrequested_genre_conflict_pair_penalty,
-      });
-    }
+  const distinct = new Set<Energy>(energies);
+  if (distinct.size === 3) {
+    details.push({ kind: 'gradient_complet', label: 'Gradient complet', points: cfg.colors.gradient_complet });
   }
   return details;
 }
@@ -142,49 +142,41 @@ function conditionLabel(cond: RecipeCondition): string {
   }
 }
 
-/** Évaluation complète, avec le set de conflits pré-construit (réutilisé par theoreticalMax). */
-function evaluate(
-  placed: Card[],
-  recipe: Recipe,
-  cfg: ScoringConfig,
-  conflicts: Set<string>,
-): ScoreBreakdown {
-  const pairs: PairDetail[] = [];
-  for (let i = 0; i < placed.length; i++) {
-    const a = placed[i];
-    if (!a) continue;
-    for (let j = i + 1; j < placed.length; j++) {
-      const b = placed[j];
-      if (!b) continue;
-      pairs.push(...computePairDetails(a, b, recipe, cfg, conflicts));
-    }
-  }
-  const coherence = pairs.reduce((sum, p) => sum + p.points, 0);
+function evaluate(placed: Card[], recipe: Recipe, cfg: ScoringConfig): ScoreBreakdown {
+  const hand = detectHand(placed, cfg);
+  const colors = detectColors(placed, cfg);
+  const colorPoints = colors.reduce((sum, c) => sum + c.points, 0);
+  const base = hand.points + colorPoints;
 
-  const conditions: ConditionDetail[] = recipe.conditions.map((cond, index) => {
-    const met = isConditionMet(cond, placed);
-    return {
-      index,
-      label: conditionLabel(cond),
-      met,
-      points: met ? cfg.objective.per_condition_met_bonus : 0,
-    };
-  });
-  const objective = conditions.reduce((sum, c) => sum + c.points, 0);
+  const conditions: ConditionDetail[] = recipe.conditions.map((cond, index) => ({
+    index,
+    label: conditionLabel(cond),
+    met: isConditionMet(cond, placed),
+  }));
+  const conditionsMet = conditions.filter((c) => c.met).length;
+  const aversionsViolated = recipe.conditions.filter(
+    (cond, i) => cond.type === 'none' && !conditions[i]?.met,
+  ).length;
 
-  // Bonus audacieux : accordé UNE SEULE fois par drop, dès qu'au moins une
-  // paire en conflit demandé est posée.
-  const audaciousApplied = pairs.some((p) => p.kind === 'requested_conflict');
-  const audacious = audaciousApplied ? cfg.audacious_resolution.flat_bonus : 0;
+  const multiplier =
+    conditionsMet === conditions.length
+      ? cfg.verdict_multipliers.all_met
+      : conditionsMet > 0
+        ? cfg.verdict_multipliers.partially_met
+        : cfg.verdict_multipliers.none_met;
 
   return {
-    pairs,
+    handKind: hand.kind,
+    handLabel: hand.label,
+    handPoints: hand.points,
+    colors,
+    colorPoints,
+    base,
     conditions,
-    coherence,
-    objective,
-    audacious,
-    audaciousApplied,
-    total: coherence + objective + audacious,
+    conditionsMet,
+    multiplier,
+    aversionsViolated,
+    total: Math.floor(base * multiplier),
   };
 }
 
@@ -193,24 +185,23 @@ export function createRules(): RulesApi {
     matchesFilter,
 
     evaluateBoard(placed: Card[], recipe: Recipe, cfg: ScoringConfig): ScoreBreakdown {
-      return evaluate(placed, recipe, cfg, buildConflictSet(cfg));
+      return evaluate(placed, recipe, cfg);
     },
 
-    pairDetails(a: Card, b: Card, recipe: Recipe, cfg: ScoringConfig): PairDetail[] {
-      return computePairDetails(a, b, recipe, cfg, buildConflictSet(cfg));
+    cardAffinity(a: Card, b: Card): { sameGenre: boolean; sameEnergy: boolean } {
+      return { sameGenre: a.genre === b.genre, sameEnergy: a.energy === b.energy };
     },
 
     theoreticalMax(deck: Card[], recipe: Recipe, cfg: ScoringConfig, boardSize = 4): number {
-      const conflicts = buildConflictSet(cfg);
       const k = Math.max(1, Math.min(boardSize, deck.length));
       // Deck ne dépassant pas la taille du plateau : une seule combinaison, la complète.
-      if (deck.length <= k) return evaluate(deck, recipe, cfg, conflicts).total;
-      // Énumération C(n, k) par indices croissants (n ≤ 12, k ≤ 4 : négligeable).
+      if (deck.length <= k) return evaluate(deck, recipe, cfg).total;
+      // Énumération C(n, k) par indices croissants (n ≤ 14, k ≤ 4 : négligeable).
       let max = -Infinity;
       const picked: Card[] = [];
       const walk = (start: number): void => {
         if (picked.length === k) {
-          const total = evaluate(picked, recipe, cfg, conflicts).total;
+          const total = evaluate(picked, recipe, cfg).total;
           if (total > max) max = total;
           return;
         }

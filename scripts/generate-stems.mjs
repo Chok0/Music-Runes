@@ -510,15 +510,16 @@ function basseMetal(buf, rng, E) {
   }
 }
 
-function bassePop(buf, rng, E) {
-  // ronde et groovy : triangle (basse 8-bit canonique), motif syncopé par mesure
+function bassePop(buf, rng, E, timbre) {
+  // ronde et groovy, motif syncopé par mesure ; l'onde vient de l'identité de
+  // la carte (cardTimbre) — deux basses Pop ne sonnent pas pareil
   for (let bar = 0; bar < 4; bar++) {
     const chord = PROG[bar];
     const grid = [0, 6, 8, 14];
     for (let i = 0; i < grid.length; i++) {
       if (i % 2 === 1 && rng() > 0.3 + 0.7 * E.dens) continue;
       const semi = rng() < 0.7 ? 0 : choose(rng, [12, 7]); // fondamentale, octave, quinte
-      const note = tone({ freq: hz(chord.bass + semi), dur: 0.3 + 0.1 * (1 - E.dens), wave: 'tri', attack: 0.02, release: 0.12, gain: 1, drive: 1.2, harmonics: [0.2] });
+      const note = tone({ freq: hz(chord.bass + semi), dur: 0.3 + 0.1 * (1 - E.dens), wave: timbre.bassWave, attack: 0.02, release: 0.12, gain: 1, drive: 1.2, harmonics: [0.2] });
       mixInto(buf, (bar * 16 + grid[i]) * STEP, note);
     }
   }
@@ -689,6 +690,25 @@ function leadTimbre(description) {
   };
 }
 
+/**
+ * Identité sonore PAR CARTE (retour playtest #4 : « toutes les cartes se
+ * valent ») : chaque carte tire, de son id, un instrument de lead et un
+ * caractère de basse dans la palette 8-bit — deux cartes du même
+ * Genre/Énergie ne sonnent plus pareil. Le glyphe reste le repère visuel de
+ * cette identité (GDD §3bis : glyphe = identité audio).
+ */
+const LEAD_WAVES = ['square', 'pulse25', 'pulse12', 'tri'];
+function cardTimbre(cardId) {
+  const rng = mulberry32(fnv1a(`${cardId}/timbre`));
+  return {
+    leadWave: choose(rng, LEAD_WAVES),
+    leadOctave: rng() < 0.3 ? 12 : 0,
+    vibHz: 4 + rng() * 3,
+    vibDepth: rng() < 0.5 ? 0 : 0.004 + rng() * 0.006,
+    bassWave: choose(rng, ['tri', 'square', 'sin']),
+  };
+}
+
 function leadTechno(buf, rng, E, timbre) {
   // arpège acide en doubles-croches (croches en Calme) ; moitié A' relevée
   // d'une octave par endroits, dernière mesure : montée + filtre grand ouvert
@@ -706,7 +726,7 @@ function leadTechno(buf, rng, E, timbre) {
       if (timbre.voice) {
         note = voiceTone({ freq: pentaHz(deg, 0), dur: 0.1 * div, robot: timbre.robot, gain: accent, attack: 0.004, release: 0.03 });
       } else {
-        note = tone({ freq: pentaHz(deg, -12), dur: 0.09 * div, wave: 'square', attack: 0.002, release: 0.03, gain: accent });
+        note = tone({ freq: pentaHz(deg, -12 + timbre.leadOctave), dur: 0.09 * div, wave: timbre.leadWave, attack: 0.002, release: 0.03, gain: accent });
         // Le filtre balaye les 64 pas de la boucle longue, ouvert en grand au climax.
         const phase = (half * 32 + s) / 64;
         const sweep = climax ? 1 : 0.5 + 0.5 * Math.sin(2 * Math.PI * phase - Math.PI / 2);
@@ -761,7 +781,7 @@ function leadPop(buf, rng, E, timbre) {
       const gain = finalNote ? 1.15 : e % 4 === 0 ? 1.1 : 0.9;
       const note = timbre.voice
         ? voiceTone({ freq: pentaHz(deg, 0), dur, gain, attack: 0.015, release: finalNote ? 0.3 : 0.12 })
-        : tone({ freq: pentaHz(deg, 0), dur, wave: 'pulse25', attack: 0.008, release: finalNote ? 0.25 : 0.08, gain, cutoff: 1200 + 1800 * E.bright, vibHz: 5, vibDepth: finalNote ? 0.008 : 0.004 });
+        : tone({ freq: pentaHz(deg, timbre.leadOctave), dur, wave: timbre.leadWave, attack: 0.008, release: finalNote ? 0.25 : 0.08, gain, cutoff: 1200 + 1800 * E.bright, vibHz: timbre.vibHz, vibDepth: finalNote ? 0.008 : timbre.vibDepth || 0.004 });
       mixInto(buf, bar * 2 + e * 2 * STEP, note);
     }
   }
@@ -791,7 +811,7 @@ function leadJazz(buf, rng, E, timbre) {
       const dur = j === ks.length - 1 ? 0.26 : 0.12;
       const note = timbre.voice
         ? voiceTone({ freq: pentaHz(deg, -12), dur, gain: 0.7 + rng() * 0.4, attack: 0.02 })
-        : tone({ freq: pentaHz(deg, -12), dur, wave: 'pulse12', attack: 0.02, release: 0.09, gain: 0.7 + rng() * 0.4, cutoff: 700 + 1100 * E.bright, vibHz: 5.5, vibDepth: 0.005 });
+        : tone({ freq: pentaHz(deg, -12), dur, wave: timbre.leadWave, attack: 0.02, release: 0.09, gain: 0.7 + rng() * 0.4, cutoff: 700 + 1100 * E.bright, vibHz: timbre.vibHz, vibDepth: 0.005 });
       mixInto(buf, b * BEAT + (ks[j] * BEAT) / 3, note);
     }
   }
@@ -810,7 +830,7 @@ function leadAmbient(buf, rng, E, timbre) {
     const gain = apex ? 1.1 : 0.85;
     const note = timbre.voice
       ? voiceTone({ freq, dur, gain, attack: 0.35, release: 0.5, amHz: 4 })
-      : tone({ freq, dur, wave: 'sin', attack: 0.4, release: 0.6, gain, vibHz: 3, vibDepth: 0.008, harmonics: [0.15] });
+      : tone({ freq, dur, wave: 'sin', attack: 0.4, release: 0.6, gain, vibHz: timbre.vibHz * 0.6, vibDepth: 0.006 + (timbre.vibDepth || 0.002), harmonics: [0.15] });
     mixInto(buf, t, note);
     t += 0.75 + rng() * 0.75;
   }
@@ -835,7 +855,7 @@ function generateStem(card, slot) {
   // Tous les stems bouclent sur 4 mesures : la progression Am→F→C→G a besoin
   // de la boucle longue, et le moteur accepte tout multiple entier de la base.
   const buf = new Float64Array(STEM_N);
-  fn(buf, rng, E, leadTimbre(card.slots[slot].description));
+  fn(buf, rng, E, { ...leadTimbre(card.slots[slot].description), ...cardTimbre(card.id) });
 
   // Écho circulaire du lead (par genre) : appliqué avant la normalisation
   // pour que le pic cible reste tenu, échos compris.

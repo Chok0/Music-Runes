@@ -250,7 +250,7 @@ export function createGame(opts: CreateGameOptions): GameStore {
       setScore += breakdown.total + discPoints;
       // Réaction du public : chaque condition ratée draine l'attention, un
       // sans-faute en regagne un peu (plafonné au max de la scène).
-      const unmet = breakdown.conditions.filter((c) => !c.met).length;
+      const unmet = breakdown.conditions.length - breakdown.conditionsMet;
       if (unmet > 0) {
         attention = Math.max(0, attention - unmet * config.attentionUnmetConditionPenalty);
       } else {

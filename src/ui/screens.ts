@@ -100,6 +100,7 @@ export function renderScoredModal(
   result: RequestResult,
   data: GameData,
   isLast: boolean,
+  wasSecret: boolean,
   onNext: () => void,
 ): HTMLElement {
   const overlay = el('div', 'modal-overlay');
@@ -108,16 +109,23 @@ export function renderScoredModal(
   modal.setAttribute('aria-modal', 'true');
 
   const recipe = data.recipeById.get(result.recipeId);
-  modal.appendChild(el('p', 'modal__kicker', '✓ Requête terminée'));
+  // Envie secrète : le drop est le moment de la RÉVÉLATION (mastermind).
+  modal.appendChild(
+    el('p', 'modal__kicker', wasSecret ? '🎭 L’envie secrète était…' : '✓ Requête terminée'),
+  );
   modal.appendChild(el('h2', 'modal__title', recipe ? `« ${recipe.name} »` : 'Requête'));
+  // L'annonce de main, en grand : la phrase que le joueur retient.
+  if (result.breakdown.handKind !== 'none') {
+    modal.appendChild(el('div', 'modal__hand', `${result.breakdown.handLabel.toUpperCase()} !`));
+  }
   modal.appendChild(el('div', 'modal__stars', starsText(result.stars)));
   modal.appendChild(
     el('div', 'modal__score', `score ${result.breakdown.total} / max théorique ${result.theoreticalMax}`),
   );
 
-  // La décomposition (paires, conditions, totaux) est rendue par
-  // renderBreakdownLines, partagée avec le panneau « Score en direct ».
-  modal.appendChild(renderBreakdownLines(result.breakdown, data));
+  // La décomposition (main, couleurs, envie, verdict) est rendue par
+  // renderBreakdownLines — l'envie est TOUJOURS révélée ici, même secrète.
+  modal.appendChild(renderBreakdownLines(result.breakdown));
   modal.appendChild(
     el('div', 'modal__discs', `💿 Valeur des disques posés : +${result.discPoints} pts au set`),
   );

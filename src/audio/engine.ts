@@ -268,11 +268,12 @@ export function createAudioEngine(data: GameData, opts: AudioEngineOptions): Aud
 
     playPoseFeedback(kind): void {
       if (disposed || kind === 'neutral') return;
-      const buffer = poseBuffers.get(kind);
+      // « meh » réutilise le gimmick interrogatif (fichier pose-dare), plus bas.
+      const buffer = poseBuffers.get(kind === 'meh' ? 'dare' : kind);
       if (!buffer) return;
       // One-shot bref au-dessus du mix : la réaction du public à la pose.
       const player = new Tone.Player(buffer).connect(master);
-      player.volume.value = -6;
+      player.volume.value = kind === 'meh' ? -14 : -6;
       player.onstop = () => player.dispose();
       player.start(Tone.now());
     },

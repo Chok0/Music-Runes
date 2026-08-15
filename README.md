@@ -52,7 +52,7 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 
 ## État du projet
 
-**Prototype MVP jouable, avec sa boucle de progression.** Le Game Design Document fait office d'unique source de vérité ; le prototype web couvre les jalons M0 à M4 de la [roadmap](docs/roadmap-mvp.md) (boucle complète du set, scoring Proposition 1 décomposé, feedback avant la pose, mix audible en temps réel) **plus le jalon M5 issu du [premier playtest](docs/playtest-2026-08-14.md)** : une **tournée de 4 scènes** (tutoriel à slots progressifs → festival), une **économie** (les points gagnés achètent des cartes à la boutique entre les scènes), une collection persistée en localStorage et une célébration de fin de scène. Prochaine étape : playtest de la boucle de fun et rééquilibrage de `data/scoring.json`.
+**Prototype jouable, en itération de game design serrée.** Le Game Design Document fait office de source de vérité, amendé par les [playtests](docs/playtest-2026-08-14.md) et l'[audit game design](docs/audit-game-design.md). Le prototype couvre : la boucle de set (plateau persistant, mix audible en temps réel), la **tournée** de 5 scènes avec économie et collection persistée (M5), la **boucle de tension** (remplacement destructeur, échanges limités, jauge d'attention du public — M6), et le **scoring « Verdict du Public »** : mains nommées façon poker (Paire/Brelan/Carré de Formes, Camaïeu/Gradient de Couleurs) multipliées par la satisfaction de l'envie du public — envies parfois **secrètes**, à deviner aux réactions de la foule. Prochaine étape : playtest du Verdict et équilibrage.
 
 ---
 
@@ -67,7 +67,7 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 | [`data/cards.json`](data/cards.json) | Les 14 cartes du set MVP (section 9 du GDD) |
 | [`data/recipes.json`](data/recipes.json) | Les recettes : les 8 du GDD (section 10) + tutorielles et finale |
 | [`data/scenes.json`](data/scenes.json) | La tournée : 4 scènes, slots progressifs, cadeaux et boutiques |
-| [`data/scoring.json`](data/scoring.json) | Paramètres de scoring (Proposition 1 du GDD) |
+| [`data/scoring.json`](data/scoring.json) | Paramètres de scoring v2 « Verdict du Public » (mains, couleurs, multiplicateurs) |
 | [`docs/playtest-2026-08-14.md`](docs/playtest-2026-08-14.md) | Retours du playtest #1 et direction design (scènes/économie) |
 
 ---
@@ -93,8 +93,8 @@ Stack pressentie (parti pris de démarrage, à valider — ce n'est pas une déc
 
 Ces points sont explicitement laissés ouverts par le GDD — ils seront tranchés en playtest, pas dans la doc :
 
-1. **Formule de scoring** : choisir entre les 3 propositions de la section 4 après premiers tests in-game — ou en garder deux en A/B test. *(Parti pris de démarrage : la Proposition 1 — somme pondérée — pour le premier test, conformément à la recommandation du GDD ; les Propositions 2 et 3 restent en réserve.)*
-2. **Chiffrage du bonus de contraste** : annoncé par le GDD (section 3, Option A ✅) et testé par la recette « Contraste assumé », mais chiffré par aucune des 3 propositions de scoring — une incohérence interne que le GDD acte lui-même. *(Parti pris de démarrage : +2 par paire Calme↔Intense — `contrast_pair_bonus` dans [`data/scoring.json`](data/scoring.json), remettable à 0 pour la Proposition 1 stricte.)*
+1. ~~Formule de scoring~~ **Tranché** : le « Verdict du Public » (mains nommées × envie) remplace les 3 propositions du GDD §4 — décision actée dans le GDD et [l'audit](docs/audit-game-design.md) §5. Reste : l'**équilibrage** des barèmes de `data/scoring.json` en playtest.
+2. ~~Chiffrage du bonus de contraste~~ **Dissous** par le Verdict : le contraste vit désormais dans le bonus « Gradient complet » (les 3 énergies présentes).
 3. **Remplacement libre vs limité** par requête (section 11). *(Parti pris de démarrage : libre, le plus simple à coder — la variante limitée reste à comparer en playtest.)*
 4. **Ton exact de l'humour** du robot musicien, et comment les requêtes/dialogues sont écrits et affichés à l'écran.
 5. **Nombre de requêtes par « set »** (5 ? 8 ?) et **taille de la main / du deck de départ** pour le MVP. *(Valeurs par défaut à tester : 6 requêtes par set, main de départ de 6 cartes, pioche de 2 cartes par nouvelle requête, deck = les 12 cartes du GDD.)*

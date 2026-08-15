@@ -135,6 +135,11 @@ export function mountApp(root: HTMLElement): void {
     return scene;
   }
 
+  /** L'envie de la requête courante est-elle SECRÈTE (mastermind tout-ou-rien) ? */
+  function isSecretRequest(state: GameState): boolean {
+    return currentScene().requests[state.requestIndex]?.secret === true;
+  }
+
   function placedCards(state: GameState): Card[] {
     const cards: Card[] = [];
     for (const slot of state.activeSlots) {
@@ -220,7 +225,7 @@ export function mountApp(root: HTMLElement): void {
     const plan = scene.requests.map((req) => {
       const recipe = data.recipeById.get(req.recipe);
       if (!recipe) throw new Error(`Recette inconnue « ${req.recipe} » (scène ${scene.id}).`);
-      return { recipe, slots: req.slots };
+      return { recipe, slots: req.slots, secret: req.secret === true };
     });
     totalRequests = plan.length;
     store = createGame({
@@ -457,7 +462,9 @@ export function mountApp(root: HTMLElement): void {
           const result = state.results[state.results.length - 1];
           if (result) {
             const isLast = state.requestIndex >= totalRequests - 1;
-            root.appendChild(renderScoredModal(result, data, isLast, () => store?.nextRequest()));
+            root.appendChild(
+              renderScoredModal(result, data, isLast, isSecretRequest(state), () => store?.nextRequest()),
+            );
           }
         }
         break;
@@ -495,7 +502,7 @@ export function mountApp(root: HTMLElement): void {
 
     const main = el('div', 'game-main');
     main.appendChild(renderBoard(state, breakdown));
-    main.appendChild(renderScorePanel(breakdown));
+    main.appendChild(renderScorePanel(state, breakdown));
     screen.appendChild(main);
 
     screen.appendChild(renderFooter(state));
@@ -540,26 +547,40 @@ export function mountApp(root: HTMLElement): void {
       ),
     );
     if (recipe) {
+      const secret = isSecretRequest(state);
       const nameRow = el('div', 'hud__recipe');
-      nameRow.appendChild(el('span', 'hud__recipe-name', `« ${recipe.name} »`));
-      nameRow.appendChild(el('span', 'hud__recipe-difficulty', recipe.difficulty));
+      nameRow.appendChild(el('span', 'hud__recipe-name', secret ? '« ??? »' : `« ${recipe.name} »`));
+      nameRow.appendChild(el('span', 'hud__recipe-difficulty', secret ? 'Envie secrète' : recipe.difficulty));
       request.appendChild(nameRow);
-      if (recipe.flavor) request.appendChild(el('div', 'hud__flavor', recipe.flavor));
-
-      // Conditions évaluées EN DIRECT sur le plateau courant — la consigne se
-      // lit d'abord en pictogrammes (formes = Genres, couleurs = Énergies,
-      // le même vocabulaire que les cartes), le texte confirme.
-      const conds = el('ul', 'hud__conditions');
-      recipe.conditions.forEach((cond, i) => {
-        const met = breakdown?.conditions.find((c) => c.index === i)?.met ?? false;
-        const li = el('li', `hud__condition ${met ? 'is-met' : 'is-unmet'}`);
-        li.appendChild(el('span', 'hud__condition-state', met ? '✓' : '○'));
-        const picto = conditionPicto(cond);
-        if (picto) li.appendChild(picto);
-        li.appendChild(el('span', 'hud__condition-label', rules.conditionLabel(cond)));
+      if (secret) {
+        // Mastermind tout-ou-rien : RIEN de l'envie n'est affiché — le public
+        // réagit à chaque pose, à toi de le lire.
+        request.appendChild(
+          el('div', 'hud__flavor', 'Le public a une idée derrière la tête. Pose, et observe ses réactions…'),
+        );
+        const conds = el('ul', 'hud__conditions');
+        const li = el('li', 'hud__condition hud__condition--secret');
+        li.appendChild(el('span', 'hud__condition-state', '❓'));
+        li.appendChild(el('span', 'hud__condition-label', 'Envie secrète — devine-la aux réactions'));
         conds.appendChild(li);
-      });
-      request.appendChild(conds);
+        request.appendChild(conds);
+      } else {
+        if (recipe.flavor) request.appendChild(el('div', 'hud__flavor', recipe.flavor));
+        // Conditions évaluées EN DIRECT sur le plateau courant — la consigne se
+        // lit d'abord en pictogrammes (formes = Genres, couleurs = Énergies,
+        // le même vocabulaire que les cartes), le texte confirme.
+        const conds = el('ul', 'hud__conditions');
+        recipe.conditions.forEach((cond, i) => {
+          const met = breakdown?.conditions.find((c) => c.index === i)?.met ?? false;
+          const li = el('li', `hud__condition ${met ? 'is-met' : 'is-unmet'}`);
+          li.appendChild(el('span', 'hud__condition-state', met ? '✓' : '○'));
+          const picto = conditionPicto(cond);
+          if (picto) li.appendChild(picto);
+          li.appendChild(el('span', 'hud__condition-label', rules.conditionLabel(cond)));
+          conds.appendChild(li);
+        });
+        request.appendChild(conds);
+      }
     }
     hud.appendChild(request);
 
@@ -633,13 +654,13 @@ export function mountApp(root: HTMLElement): void {
   }
 
   /**
-   * Dessine les liens entre les cartes posées : segments dans les gouttières
-   * du plateau (les deux diagonales se croisent au centre — la « croix »),
-   * colorés par la relation de paire, avec le delta de points en badge.
+   * Dessine les AFFINITÉS entre disques posés : segments dans les gouttières
+   * du plateau (les deux diagonales se croisent au centre — la « croix »).
+   * Trait plein = même Forme (construit les mains), pointillé = même Couleur
+   * (construit les camaïeux). Pas de badge chiffré : la grammaire des mains
+   * rend le lien lisible sans arithmétique (retour playtest #4 : « chargé »).
    */
   function renderBoardLinks(board: HTMLElement, state: GameState): void {
-    const recipe = store?.currentRecipe() ?? null;
-    if (!recipe) return;
     const svg = document.createElementNS(SVG_NS, 'svg');
     svg.classList.add('board-links');
     svg.setAttribute('aria-hidden', 'true');
@@ -661,10 +682,13 @@ export function mountApp(root: HTMLElement): void {
         const elB = board.querySelector(`.slot[data-slot="${slotB}"]`);
         if (!cardA || !cardB || !elA || !elB) continue;
 
-        const details = rules.pairDetails(cardA, cardB, recipe, data.scoring);
-        const dare = details.some((d) => d.kind === 'requested_conflict');
-        const sum = details.reduce((acc, d) => acc + d.points, 0);
-        const cls = dare ? 'link--dare' : sum > 0 ? 'link--good' : sum < 0 ? 'link--bad' : 'link--neutral';
+        const affinity = rules.cardAffinity(cardA, cardB);
+        if (!affinity.sameGenre && !affinity.sameEnergy) continue; // pas de lien = pas de trait
+        const cls = affinity.sameGenre && affinity.sameEnergy
+          ? 'link--both'
+          : affinity.sameGenre
+            ? 'link--genre'
+            : 'link--energy';
 
         const p1 = edgePoint(elA.getBoundingClientRect(), elB.getBoundingClientRect(), origin);
         const p2 = edgePoint(elB.getBoundingClientRect(), elA.getBoundingClientRect(), origin);
@@ -676,28 +700,6 @@ export function mountApp(root: HTMLElement): void {
         line.setAttribute('x2', String(p2.x));
         line.setAttribute('y2', String(p2.y));
         group.appendChild(line);
-
-        // Badge de points au milieu du lien (pas sur les liens muets).
-        if (cls !== 'link--neutral') {
-          const mx = (p1.x + p2.x) / 2;
-          const my = (p1.y + p2.y) / 2;
-          const label = dare && sum === 0 ? '⚡' : formatPoints(sum);
-          const w = label.length * 7 + 10;
-          const rect = document.createElementNS(SVG_NS, 'rect');
-          rect.setAttribute('x', String(mx - w / 2));
-          rect.setAttribute('y', String(my - 9));
-          rect.setAttribute('width', String(w));
-          rect.setAttribute('height', '18');
-          rect.setAttribute('rx', '9');
-          group.appendChild(rect);
-          const text = document.createElementNS(SVG_NS, 'text');
-          text.setAttribute('x', String(mx));
-          text.setAttribute('y', String(my + 1));
-          text.setAttribute('text-anchor', 'middle');
-          text.setAttribute('dominant-baseline', 'middle');
-          text.textContent = label;
-          group.appendChild(text);
-        }
         svg.appendChild(group);
       }
     });
@@ -707,15 +709,18 @@ export function mountApp(root: HTMLElement): void {
     const board = el('section', 'board');
     board.setAttribute('aria-label', 'Plateau de mix');
 
-    // Feedback visuel du mix (GDD §5) : tremblement si cohérence négative,
-    // liseré harmonieux si elle est haute — sobre, piloté par une CSS var.
-    const coherence = breakdown?.coherence ?? 0;
-    if (coherence < 0) {
-      board.classList.add('board--dissonant');
-      const amp = Math.min(UI_FEEDBACK.shakeMaxPx, UI_FEEDBACK.shakePxPerPoint * Math.abs(coherence));
-      board.style.setProperty('--shake-amp', `${amp.toFixed(2)}px`);
-    } else if (coherence >= UI_FEEDBACK.harmonyThreshold) {
-      board.classList.add('board--harmonious');
+    // Feedback visuel du mix (GDD §5) : tremblement si une aversion du public
+    // est violée, liseré harmonieux quand l'envie est entièrement servie —
+    // MASQUÉ en mode secret (ce serait la réponse gratuite du mastermind).
+    const secret = isSecretRequest(state);
+    if (breakdown && !secret) {
+      if (breakdown.aversionsViolated > 0) {
+        board.classList.add('board--dissonant');
+        const amp = Math.min(UI_FEEDBACK.shakeMaxPx, UI_FEEDBACK.shakePxPerPoint * 2 * breakdown.aversionsViolated);
+        board.style.setProperty('--shake-amp', `${amp.toFixed(2)}px`);
+      } else if (breakdown.multiplier >= 2 && breakdown.base > 0) {
+        board.classList.add('board--harmonious');
+      }
     }
 
     for (const slot of SLOT_IDS) board.appendChild(renderSlot(state, slot));
@@ -770,25 +775,27 @@ export function mountApp(root: HTMLElement): void {
     return wrap;
   }
 
-  function renderScorePanel(breakdown: ScoreBreakdown | null): HTMLElement {
+  function renderScorePanel(state: GameState, breakdown: ScoreBreakdown | null): HTMLElement {
+    const secret = isSecretRequest(state);
     const details = el('details', 'score-panel');
     details.open = ui.panelOpen;
     details.addEventListener('toggle', () => {
       ui.panelOpen = details.open; // mémorisé sans re-render (état natif <details>)
     });
-    const summary = el('summary', 'score-panel__summary', `Score en direct : ${breakdown?.total ?? 0} pts`);
+    // L'annonce de main est le résumé : « BRELAN TECHNO » se lit sans ouvrir.
+    const headline = breakdown && breakdown.handKind !== 'none' ? breakdown.handLabel.toUpperCase() : 'Aucune main';
+    const scorePart = secret ? 'verdict ❓' : `${breakdown?.total ?? 0} pts`;
+    const summary = el('summary', 'score-panel__summary', `${headline} — ${scorePart}`);
     summary.dataset['key'] = 'panel';
     details.appendChild(summary);
     if (breakdown) {
-      details.appendChild(renderBreakdownLines(breakdown, data));
-      const discValue = store
-        ? placedCards(store.getState()).reduce((acc, c) => acc + c.value, 0)
-        : 0;
+      details.appendChild(renderBreakdownLines(breakdown, { secretHidden: secret }));
+      const discValue = placedCards(state).reduce((acc, c) => acc + c.value, 0);
       details.appendChild(
         el('p', 'score-panel__hint', `💿 Valeur des disques posés : +${discValue} pts au set (au drop).`),
       );
     } else {
-      details.appendChild(el('p', 'score-panel__hint', 'Pose des cartes pour voir la décomposition du score.'));
+      details.appendChild(el('p', 'score-panel__hint', 'Pose des cartes pour voir la main et le verdict.'));
     }
     return details;
   }
@@ -860,12 +867,11 @@ export function mountApp(root: HTMLElement): void {
   }
 
   // --- Feedback avant la pose (GDD §5/§7 — le cœur de la lisibilité) --------
-  function haloClass(active: Card, other: Card, recipe: Recipe): string | null {
-    const details = rules.pairDetails(active, other, recipe, data.scoring);
-    if (details.some((d) => d.kind === 'requested_conflict')) return 'halo--dare';
-    const sum = details.reduce((acc, d) => acc + d.points, 0);
-    if (sum > 0) return 'halo--good';
-    if (sum < 0) return 'halo--bad';
+  /** Halo d'affinité : même Forme (main) prime sur même Couleur (camaïeu). */
+  function haloClass(active: Card, other: Card): string | null {
+    const affinity = rules.cardAffinity(active, other);
+    if (affinity.sameGenre) return 'halo--good';
+    if (affinity.sameEnergy) return 'halo--energy';
     return null;
   }
 
@@ -875,8 +881,8 @@ export function mountApp(root: HTMLElement): void {
    * changement de slot survolé pendant un drag.
    */
   function applyActiveFeedback(state: GameState): void {
-    root.querySelectorAll('.halo--good, .halo--bad, .halo--dare').forEach((n) => {
-      n.classList.remove('halo--good', 'halo--bad', 'halo--dare');
+    root.querySelectorAll('.halo--good, .halo--bad, .halo--energy').forEach((n) => {
+      n.classList.remove('halo--good', 'halo--bad', 'halo--energy');
     });
     root.querySelectorAll('.slot--target').forEach((n) => n.classList.remove('slot--target'));
     root.querySelectorAll('.slot__delta').forEach((n) => n.remove());
@@ -888,17 +894,25 @@ export function mountApp(root: HTMLElement): void {
     const active = cardOf(activeId);
     if (!active) return;
 
-    // Halo sur chaque carte déjà posée : la paire (carte active, carte posée).
+    // Halo d'affinité sur chaque carte déjà posée (forme prime sur couleur).
     for (const slot of state.activeSlots) {
       const id = state.board[slot];
       if (!id || id === activeId) continue;
       const other = cardOf(id);
       if (!other) continue;
-      const cls = haloClass(active, other, recipe);
+      const cls = haloClass(active, other);
       if (cls) root.querySelector(`.slot[data-slot="${slot}"] .card`)?.classList.add(cls);
     }
 
-    // Delta hypothétique : le slot survolé en drag, tous les slots ACTIFS en sélection.
+    // Delta hypothétique : le slot survolé en drag, tous les slots ACTIFS en
+    // sélection. MASQUÉ en mode secret : le chiffre résoudrait le mastermind
+    // par l'arithmétique — seules les réactions du public parlent.
+    if (isSecretRequest(state)) {
+      if (drag?.started && drag.hoverSlot) {
+        root.querySelector(`.slot[data-slot="${drag.hoverSlot}"]`)?.classList.add('slot--target');
+      }
+      return;
+    }
     const targets: SlotId[] = drag?.started
       ? drag.hoverSlot
         ? [drag.hoverSlot]
@@ -920,36 +934,46 @@ export function mountApp(root: HTMLElement): void {
     }
   }
 
-  // --- Pose avec réaction du public (la boussole — retour playtest #4) -----
+  // --- Pose avec réaction du public --------------------------------------
+  // La boussole ET le canal d'information du mastermind (playtest #4) : la
+  // réaction reflète L'ENVIE du public — c'est en la lisant qu'on devine une
+  // envie secrète. Priorité : conditions gagnées/perdues, puis la main.
 
-  /** Nature de la réaction du public à la pose de `card` sur `slot`. */
-  function poseReaction(state: GameState, card: Card, slot: SlotId): 'good' | 'bad' | 'dare' | 'neutral' {
+  type PoseKind = 'good' | 'bad' | 'meh' | 'neutral';
+
+  function poseReaction(state: GameState, card: Card, slot: SlotId): PoseKind {
     const recipe = store?.currentRecipe() ?? null;
     if (!recipe) return 'neutral';
-    let dare = false;
-    for (const other of state.activeSlots) {
-      if (other === slot) continue;
-      const id = state.board[other];
-      if (!id || id === card.id) continue;
-      const otherCard = cardOf(id);
-      if (!otherCard) continue;
-      if (rules.pairDetails(card, otherCard, recipe, data.scoring).some((d) => d.kind === 'requested_conflict')) {
-        dare = true;
-      }
-    }
-    const delta = hypotheticalDelta(state, recipe, card, slot);
-    if (dare) return 'dare';
-    return delta > 0 ? 'good' : delta < 0 ? 'bad' : 'neutral';
+    const before = evaluatePlaced(state, recipe);
+    // Plateau hypothétique avec la carte posée (même sémantique que place()).
+    const board: Record<SlotId, string | null> = { ...state.board };
+    const sourceSlot = SLOT_IDS.find((s) => board[s] === card.id);
+    if (sourceSlot !== undefined) board[sourceSlot] = board[slot];
+    board[slot] = card.id;
+    const after = evaluatePlaced({ ...state, board }, recipe);
+    if (!after) return 'neutral';
+
+    const metBefore = before?.conditionsMet ?? 0;
+    const aversionsBefore = before?.aversionsViolated ?? 0;
+    // L'envie d'abord : elle progresse → le public s'enthousiasme ; elle
+    // recule (ou une aversion est violée) → il grimace.
+    if (after.conditionsMet > metBefore) return 'good';
+    if (after.conditionsMet < metBefore || after.aversionsViolated > aversionsBefore) return 'bad';
+    // À envie constante : la main qui s'améliore plaît, le reste laisse froid.
+    const baseBefore = before?.base ?? 0;
+    if (after.base > baseBefore) return 'good';
+    if (after.base < baseBefore) return 'meh';
+    return 'meh';
   }
 
-  const EMOTES: Record<'good' | 'bad' | 'dare', string[]> = {
+  const EMOTES: Record<Exclude<PoseKind, 'neutral'>, string[]> = {
     good: ['🕺', '💃', '🙌', '👏'],
-    bad: ['😬', '🙈', '😒'],
-    dare: ['😲', '🤨', '🔥'],
+    bad: ['😡', '🙈', '😬'],
+    meh: ['😐', '🤷', '🥱'],
   };
 
   /** Émote flottante au-dessus du slot — spawn APRÈS le re-render de la pose. */
-  function spawnEmote(slot: SlotId, kind: 'good' | 'bad' | 'dare' | 'neutral'): void {
+  function spawnEmote(slot: SlotId, kind: PoseKind): void {
     if (kind === 'neutral') return;
     const slotEl = root.querySelector(`.slot[data-slot="${slot}"]`);
     if (!slotEl) return;

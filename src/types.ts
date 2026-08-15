@@ -76,28 +76,46 @@ export interface Recipe {
   conditions: RecipeCondition[];
 }
 
+/**
+ * Scoring v2 « Le Verdict du Public » (docs/audit-game-design.md §5) :
+ * mains nommées façon poker sur les axes visibles (Formes = Genres,
+ * Couleurs = Énergies), multipliées par la satisfaction de l'envie du public.
+ */
 export interface ScoringConfig {
   schema_version: number;
   model: string;
   model_status: string;
-  coherence: {
-    same_genre_pair_bonus: number;
-    same_energy_pair_bonus: number;
-    /** Proposition hors Proposition 1 stricte — 0 pour la désactiver. */
-    contrast_pair_bonus: number;
-    contrast_pair_bonus_status?: string;
-    unrequested_genre_conflict_pair_penalty: number;
+  hands: {
+    comment?: string;
+    pair: number;
+    two_pair: number;
+    three_of_a_kind: number;
+    four_of_a_kind: number;
   };
-  objective: { per_condition_met_bonus: number };
-  audacious_resolution: { flat_bonus: number };
+  colors: {
+    comment?: string;
+    camaieu_4: number;
+    camaieu_3: number;
+    gradient_complet: number;
+  };
+  verdict_multipliers: {
+    comment?: string;
+    none_met: number;
+    partially_met: number;
+    all_met: number;
+  };
   star_thresholds: { stars: number; min_ratio_of_theoretical_max: number }[];
-  genre_conflicts: { status?: string; pairs: [Genre, Genre][] };
 }
 
 /** Une requête d'une scène : sa recette et les slots actifs (progressivité). */
 export interface SceneRequest {
   recipe: string;
   slots: SlotId[];
+  /**
+   * Envie SECRÈTE (mastermind, tout-ou-rien — décision playtest #4) : la
+   * recette n'est pas affichée, le joueur la devine aux réactions du public.
+   */
+  secret?: boolean;
 }
 
 /** Boutique de fin de scène : choisir 1 carte parmi les 3 premières offres non possédées. */
@@ -141,12 +159,13 @@ export interface GameData {
 // Moteur de règles (src/rules) — pur, sans dépendance UI/audio/DOM
 // ---------------------------------------------------------------------------
 
-/** Interaction d'une paire de cartes. Une même paire peut cumuler plusieurs détails. */
-export interface PairDetail {
-  a: string; // id de carte
-  b: string; // id de carte
-  kind: 'same_genre' | 'same_energy' | 'contrast' | 'conflict' | 'requested_conflict';
-  /** Points apportés par ce détail (0 pour requested_conflict : exempté de pénalité). */
+/** Main de formes (Genres) détectée sur le plateau — la meilleure seule compte. */
+export type HandKind = 'none' | 'pair' | 'two_pair' | 'three_of_a_kind' | 'four_of_a_kind';
+
+/** Bonus de couleurs (Énergies), cumulables. */
+export interface ColorDetail {
+  kind: 'camaieu_4' | 'camaieu_3' | 'gradient_complet';
+  label: string;
   points: number;
 }
 
@@ -154,18 +173,31 @@ export interface ConditionDetail {
   index: number;
   label: string;
   met: boolean;
-  points: number;
 }
 
 export interface ScoreBreakdown {
-  pairs: PairDetail[];
+  /** Main de formes : nature, libellé annonçable (« BRELAN TECHNO ! ») et points. */
+  handKind: HandKind;
+  handLabel: string;
+  handPoints: number;
+  colors: ColorDetail[];
+  colorPoints: number;
+  /** Base = main + couleurs, avant le verdict du public. */
+  base: number;
   conditions: ConditionDetail[];
-  coherence: number;
-  objective: number;
-  /** +10 si une contradiction demandée par la recette est effectivement posée. */
-  audacious: number;
-  audaciousApplied: boolean;
+  conditionsMet: number;
+  /** Multiplicateur du verdict (aucune/partielle/toutes conditions remplies). */
+  multiplier: number;
+  /** Nombre de conditions d'aversion (type none) violées — pilote la dissonance visuelle. */
+  aversionsViolated: number;
+  /** floor(base × multiplier). */
   total: number;
+}
+
+/** Affinités visibles d'une paire de cartes (liens du plateau). */
+export interface CardAffinity {
+  sameGenre: boolean;
+  sameEnergy: boolean;
 }
 
 export interface RulesApi {
@@ -177,8 +209,8 @@ export interface RulesApi {
    * présentes ; `all_same_genre`/`all_different_genres` exigent 4 cartes.
    */
   evaluateBoard(placed: Card[], recipe: Recipe, cfg: ScoringConfig): ScoreBreakdown;
-  /** Interactions d'une seule paire (feedback avant la pose, GDD sections 5/7). */
-  pairDetails(a: Card, b: Card, recipe: Recipe, cfg: ScoringConfig): PairDetail[];
+  /** Affinités visibles d'une paire (liens du plateau : même forme / même couleur). */
+  cardAffinity(a: Card, b: Card): CardAffinity;
   /**
    * Score max théorique de la recette par énumération exhaustive des
    * C(n, boardSize) combinaisons du deck (modele-de-donnees §4). `boardSize`
@@ -297,10 +329,11 @@ export interface GameStore {
   currentRecipe(): Recipe | null;
 }
 
-/** Une étape du plan de set : recette + slots actifs. */
+/** Une étape du plan de set : recette + slots actifs (+ envie secrète). */
 export interface RequestPlan {
   recipe: Recipe;
   slots: readonly SlotId[];
+  secret?: boolean;
 }
 
 export interface CreateGameOptions {
@@ -358,7 +391,7 @@ export interface AudioEngine {
   /** Vide tous les slots (fin de scène) sans détruire le moteur : la tournée continue. */
   clearAllSlots(): void;
   /** Réaction sonore du public à une pose (no-op si neutre ou SFX indisponible). */
-  playPoseFeedback(kind: 'good' | 'bad' | 'dare' | 'neutral'): void;
+  playPoseFeedback(kind: 'good' | 'bad' | 'meh' | 'neutral'): void;
   /** Applaudissements de fin de scène (one-shot, no-op si le SFX est indisponible). */
   playApplause(): void;
   dispose(): void;

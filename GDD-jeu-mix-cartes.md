@@ -70,6 +70,15 @@ Cette distinction (tags = ce qui compte pour le calcul / glyphe = ce qui compte 
 
 ## 4. Scoring — comment on évalue un mix
 
+> **Décision post-playtests (2026-08-14)** : les 3 propositions ci-dessous
+> sont remplacées par le modèle **« Le Verdict du Public »** — des mains
+> nommées façon poker sur les deux axes visibles (Paire/Brelan/Carré de
+> Formes, Camaïeu/Gradient de Couleurs), multipliées par la satisfaction de
+> l'envie du public (×0.5 / ×1 / ×2), certaines envies étant SECRÈTES et
+> devinées aux réactions du public. Diagnostic et justification :
+> docs/audit-game-design.md §5 ; paramètres : data/scoring.json (schéma v2).
+> Le texte original est conservé ci-dessous pour l'historique.
+
 Trois axes de score possibles, cumulables :
 
 1. **Score de cohérence** (système) : calculé automatiquement à partir des synergies actives (tags qui matchent, contrastes qui matchent) + respect du tempo/tonalité globale
