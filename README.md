@@ -1,5 +1,7 @@
 # Music Runes *(nom provisoire)*
 
+> **⏸️ Prototype gelé (2026-08-14)** — après 5 playtests et un pivot de scoring, le feeling de jeu n'est pas venu ; le diagnostic et les apprentissages sont dans le [post-mortem](docs/post-mortem.md). Le jeu reste jouable, le code réutilisable. Tag : `v0-prototype`.
+
 > Un deckbuilder musical où l'on compose des mix en temps réel en posant des cartes-samples sur des slots limités, avec des synergies cachées à découvrir.
 
 Un jeu mobile / session courte (rounds de 2-5 minutes) où chaque partie est un concert : on écoute son mix se construire pendant qu'on le joue.
@@ -52,7 +54,7 @@ La partie n'est pas une suite de rounds indépendants, mais **une séquence cont
 
 ## État du projet
 
-**Prototype jouable, en itération de game design serrée.** Le Game Design Document fait office de source de vérité, amendé par les [playtests](docs/playtest-2026-08-14.md) et l'[audit game design](docs/audit-game-design.md). Le prototype couvre : la boucle de set (plateau persistant, mix audible en temps réel), la **tournée** de 5 scènes avec économie et collection persistée (M5), la **boucle de tension** (remplacement destructeur, échanges limités, jauge d'attention du public — M6), et le **scoring « Verdict du Public »** : mains nommées façon poker (Paire/Brelan/Carré de Formes, Camaïeu/Gradient de Couleurs) multipliées par la satisfaction de l'envie du public — envies parfois **secrètes**, à deviner aux réactions de la foule. Prochaine étape : playtest du Verdict et équilibrage.
+**Prototype gelé** — voir le [post-mortem](docs/post-mortem.md) pour la question posée, la chronologie des hypothèses et le diagnostic final. L'état au gel couvre : la boucle de set (plateau persistant, mix audible en temps réel), la **tournée** de 5 scènes avec économie et collection persistée (M5), la **boucle de tension** (remplacement destructeur, échanges limités, jauge d'attention du public — M6), et le **scoring « Verdict du Public »** : mains nommées façon poker multipliées par la satisfaction de l'envie du public, envies parfois **secrètes** à deviner aux réactions de la foule.
 
 ---
 
